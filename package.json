@@ -9,10 +9,16 @@
     "preview": "vite preview --port 5176",
     "desktop": "electron .",
     "electron:dev": "vite --port 5176",
-    "electron:build": "npm run build && electron-builder",
+    "electron:build": "npm run build && electron-builder --config electron-builder.json",
+    "build:win": "npm run build && electron-builder --win --x64 --config electron-builder.json",
+    "build:mac": "npm run build && electron-builder --mac --config electron-builder.json",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@capacitor/android": "^7.6.8",
+    "@capacitor/cli": "^7.6.8",
+    "@capacitor/core": "^7.6.8",
+    "@capacitor/ios": "^7.6.8",
     "date-fns": "^4.1.0",
     "firebase": "^11.2.0",
     "lucide-react": "^0.475.0",
@@ -28,6 +34,8 @@
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
     "tailwindcss": "^4.0.6",
     "typescript": "^5.7.3",
     "vite": "^6.1.0"
