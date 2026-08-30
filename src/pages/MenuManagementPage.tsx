@@ -10,6 +10,7 @@ import {
   X
 } from 'lucide-react';
 import { useManagerStore } from '../store/managerStore';
+import { getApiUrl } from '../lib/api';
 import toast from 'react-hot-toast';
 
 export const MenuManagementPage: React.FC = () => {
@@ -31,7 +32,7 @@ export const MenuManagementPage: React.FC = () => {
   const loadMenuManagement = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:5000/api/menu/branch/' + branchId + '/management', {
+      const res = await fetch(getApiUrl(`/api/menu/branch/${branchId}/management`), {
         headers: { 'Authorization': 'Bearer test-manager-token' }
       });
       const data = await res.json();
@@ -53,7 +54,7 @@ export const MenuManagementPage: React.FC = () => {
     const nextState = !product.isEnabledForBranch;
     const toastId = toast.loading((nextState ? 'Enabling ' : 'Disabling ') + product.name + '...');
     try {
-      const res = await fetch('http://localhost:5000/api/menu/branch/' + branchId + '/toggle', {
+      const res = await fetch(getApiUrl(`/api/menu/branch/${branchId}/toggle`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer test-manager-token' },
         body: JSON.stringify({ productId: product.id, isEnabled: nextState })
@@ -74,7 +75,7 @@ export const MenuManagementPage: React.FC = () => {
     if (!selectedProduct) return;
     const toastId = toast.loading('Saving branch customization rules...');
     try {
-      const res = await fetch('http://localhost:5000/api/menu/branch/' + branchId + '/customizations', {
+      const res = await fetch(getApiUrl(`/api/menu/branch/${branchId}/customizations`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer test-manager-token' },
         body: JSON.stringify({
@@ -102,7 +103,7 @@ export const MenuManagementPage: React.FC = () => {
     e.preventDefault();
     const toastId = toast.loading('Creating local physical-only item...');
     try {
-      const res = await fetch('http://localhost:5000/api/menu/branch/' + branchId + '/local-product', {
+      const res = await fetch(getApiUrl(`/api/menu/branch/${branchId}/local-product`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer test-manager-token' },
         body: JSON.stringify({
