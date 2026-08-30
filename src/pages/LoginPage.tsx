@@ -6,7 +6,6 @@ import {
 } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useManagerStore } from '../store/managerStore';
 import { Pizza, ShieldCheck, Mail, Lock, AlertCircle, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -20,6 +19,28 @@ export const LoginPage: React.FC = () => {
   const location = useLocation();
   const from = location.state?.from?.pathname || '/dashboard';
 
+  const formatAuthError = (err: any) => {
+    const code = err?.code || '';
+    switch (code) {
+      case 'auth/invalid-credential':
+      case 'auth/wrong-password':
+      case 'auth/user-not-found':
+        return 'Invalid email or password. Please check your credentials.';
+      case 'auth/invalid-email':
+        return 'Please enter a valid email address.';
+      case 'auth/user-disabled':
+        return 'This manager account has been disabled. Please contact administration.';
+      case 'auth/too-many-requests':
+        return 'Too many failed attempts. Please wait a few minutes before trying again.';
+      case 'auth/network-request-failed':
+        return 'Network connection error. Please check your internet connection.';
+      case 'auth/popup-closed-by-user':
+        return null;
+      default:
+        return err?.message || 'Authentication failed. Please check your credentials.';
+    }
+  };
+
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     setError(null);
@@ -29,42 +50,8 @@ export const LoginPage: React.FC = () => {
       navigate(from, { replace: true });
     } catch (err: any) {
       console.error('[Login] Google sign-in failed:', err);
-      setError(err?.message || 'Google sign-in failed. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleQuickBypass = async (selectedEmail: string, roleName: string) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      useManagerStore.setState({
-        user: {
-          uid: selectedEmail === 'olivepizzarjn@gmail.com' ? 'ZzMmHLa6fBeDYY7clYNjP70fbiE2' : '6tLLR6q7aTYqzTG2blRx3TU5sA42',
-          email: selectedEmail,
-          displayName: roleName,
-        } as any,
-        managerProfile: {
-          uid: selectedEmail === 'olivepizzarjn@gmail.com' ? 'ZzMmHLa6fBeDYY7clYNjP70fbiE2' : '6tLLR6q7aTYqzTG2blRx3TU5sA42',
-          name: roleName,
-          email: selectedEmail,
-          role: 'owner',
-          branchId: 'main_branch',
-          branchName: 'Olive Pizza — Rajnandgaon HQ',
-          permissions: ['dashboard.view', 'orders.live', 'orders.history', 'notifications.send', 'email.send', 'delivery.view'],
-          isActive: true
-        },
-        userRole: 'owner',
-        isAuthorized: true,
-        activeBranchId: 'main_branch',
-        activeBranchName: 'Olive Pizza — Rajnandgaon HQ',
-        isAuthChecking: false
-      });
-      toast.success(`Welcome to Restaurant Management, ${roleName}!`);
-      navigate(from, { replace: true });
-    } catch (err: any) {
-      setError(err?.message || 'Quick login failed');
+      const msg = formatAuthError(err);
+      if (msg) setError(msg);
     } finally {
       setIsLoading(false);
     }
@@ -80,12 +67,13 @@ export const LoginPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, email.trim(), password);
       toast.success('Welcome to Restaurant Management');
       navigate(from, { replace: true });
     } catch (err: any) {
       console.error('[Login] Email sign-in failed:', err);
-      setError(err?.message || 'Invalid credentials or unauthorized account.');
+      const msg = formatAuthError(err);
+      if (msg) setError(msg);
     } finally {
       setIsLoading(false);
     }
@@ -97,10 +85,11 @@ export const LoginPage: React.FC = () => {
       return;
     }
     try {
-      await sendPasswordResetEmail(auth, email);
+      await sendPasswordResetEmail(auth, email.trim());
       toast.success('Password reset email sent');
     } catch (err: any) {
-      toast.error(err?.message || 'Failed to send reset email');
+      const msg = formatAuthError(err) || 'Failed to send reset email';
+      toast.error(msg);
     }
   };
 
@@ -133,45 +122,12 @@ export const LoginPage: React.FC = () => {
             </div>
           )}
 
-          {/* 1-Click Authorized Sign-In */}
-          <div className="space-y-2 mb-4">
-            <button
-              type="button"
-              onClick={() => handleQuickBypass('olivepizzarjn@gmail.com', 'Master Restaurant Owner')}
-              className="w-full py-2.5 px-4 bg-[#57854d]/20 hover:bg-[#57854d]/30 border border-[#57854d]/40 text-[#c6a052] rounded-xl text-xs font-bold flex items-center justify-between transition-all cursor-pointer"
-            >
-              <span className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-[#c6a052]" />
-                <span>Enter as olivepizzarjn@gmail.com</span>
-              </span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickBypass('webhub2811@gmail.com', 'Developer / Lead Manager')}
-              className="w-full py-2.5 px-4 bg-[#1b241e] hover:bg-[#222d26] border border-[#26332a] text-[#a4c29c] rounded-xl text-xs font-bold flex items-center justify-between transition-all cursor-pointer"
-            >
-              <span className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-[#7ba372]" />
-                <span>Enter as webhub2811@gmail.com</span>
-              </span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3 my-3">
-            <div className="flex-1 h-px bg-[#26332a]" />
-            <span className="text-[10px] uppercase font-bold text-[#7ba372]">Or continue with Google</span>
-            <div className="flex-1 h-px bg-[#26332a]" />
-          </div>
-
           {/* Google Sign-in */}
           <button
             type="button"
             onClick={handleGoogleSignIn}
             disabled={isLoading}
-            className="w-full py-3 px-4 rounded-xl bg-[#1b241e] hover:bg-[#222d26] border border-[#26332a] hover:border-[#c6a052]/40 font-bold text-xs text-white transition-all flex items-center justify-center gap-3 shadow-md disabled:opacity-50"
+            className="w-full py-3 px-4 rounded-xl bg-[#1b241e] hover:bg-[#222d26] border border-[#26332a] hover:border-[#c6a052]/40 font-bold text-xs text-white transition-all flex items-center justify-center gap-3 shadow-md disabled:opacity-50 cursor-pointer"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24">
               <path
@@ -223,7 +179,7 @@ export const LoginPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleForgotPassword}
-                  className="text-[11px] text-[#c6a052] hover:underline"
+                  className="text-[11px] text-[#c6a052] hover:underline cursor-pointer"
                 >
                   Forgot password?
                 </button>
@@ -244,7 +200,7 @@ export const LoginPage: React.FC = () => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 rounded-xl bg-[#57854d] hover:bg-[#426939] text-white font-bold text-xs shadow-lg shadow-green-950/60 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              className="w-full py-3 rounded-xl bg-[#57854d] hover:bg-[#426939] text-white font-bold text-xs shadow-lg shadow-green-950/60 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               {isLoading ? (
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />

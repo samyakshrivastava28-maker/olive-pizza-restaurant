@@ -8,6 +8,8 @@ import {
   onSnapshot, 
   type Unsubscribe, 
   getDocs,
+  getDoc,
+  doc,
   Timestamp 
 } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
@@ -141,26 +143,54 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
             branchId = 'main_branch';
             branchName = 'Olive Pizza — Rajnandgaon HQ';
           } else {
-            // Check Firestore user doc
-            const userDocSnap = await getDocs(query(collection(db, 'users'), where('email', '==', emailLower))).catch(() => null);
-            if (userDocSnap && !userDocSnap.empty) {
-              const uData = userDocSnap.docs[0].data();
-              role = uData.role || role;
-              branchId = uData.branchId || branchId;
-              branchName = uData.branchName || branchName;
-              if (uData.permissions) permissions = uData.permissions;
-              isAccountActive = uData.isActive !== false;
+            // 1. Direct Firestore user doc lookup by UID
+            try {
+              const userDocSnap = await getDoc(doc(db, 'users', currentUser.uid));
+              if (userDocSnap.exists()) {
+                const uData = userDocSnap.data();
+                role = uData.role || role;
+                branchId = uData.branchId || branchId;
+                branchName = uData.branchName || branchName;
+                if (uData.permissions) permissions = uData.permissions;
+                isAccountActive = uData.isActive !== false;
+              } else {
+                const userQuery = await getDocs(query(collection(db, 'users'), where('email', '==', emailLower))).catch(() => null);
+                if (userQuery && !userQuery.empty) {
+                  const uData = userQuery.docs[0].data();
+                  role = uData.role || role;
+                  branchId = uData.branchId || branchId;
+                  branchName = uData.branchName || branchName;
+                  if (uData.permissions) permissions = uData.permissions;
+                  isAccountActive = uData.isActive !== false;
+                }
+              }
+            } catch (e) {
+              console.warn('[ManagerStore] Users lookup notice:', e);
             }
 
-            // Also check restaurant_managers collection
-            const mgrSnap = await getDocs(query(collection(db, 'restaurant_managers'), where('email', '==', emailLower))).catch(() => null);
-            if (mgrSnap && !mgrSnap.empty) {
-              const mData = mgrSnap.docs[0].data();
-              role = mData.role || 'restaurant_manager';
-              branchId = mData.branchId || branchId;
-              branchName = mData.branchName || branchName;
-              if (mData.permissions) permissions = mData.permissions;
-              isAccountActive = mData.isActive !== false;
+            // 2. Direct restaurant_managers doc lookup by UID
+            try {
+              const mgrDocSnap = await getDoc(doc(db, 'restaurant_managers', currentUser.uid));
+              if (mgrDocSnap.exists()) {
+                const mData = mgrDocSnap.data();
+                role = mData.role || 'restaurant_manager';
+                branchId = mData.branchId || branchId;
+                branchName = mData.branchName || branchName;
+                if (mData.permissions) permissions = mData.permissions;
+                isAccountActive = mData.isActive !== false;
+              } else {
+                const mgrSnap = await getDocs(query(collection(db, 'restaurant_managers'), where('email', '==', emailLower))).catch(() => null);
+                if (mgrSnap && !mgrSnap.empty) {
+                  const mData = mgrSnap.docs[0].data();
+                  role = mData.role || 'restaurant_manager';
+                  branchId = mData.branchId || branchId;
+                  branchName = mData.branchName || branchName;
+                  if (mData.permissions) permissions = mData.permissions;
+                  isAccountActive = mData.isActive !== false;
+                }
+              }
+            } catch (e) {
+              console.warn('[ManagerStore] Manager lookup notice:', e);
             }
           }
         } catch (e) {
@@ -192,37 +222,30 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
           isAuthChecking: false
         });
 
-        get().subscribeToLiveOrders(branchId);
-        get().subscribeToRiders(branchId);
-        get().fetchHistoricalOrders();
+        if (isAuthorized) {
+          get().subscribeToLiveOrders(branchId);
+          get().subscribeToRiders(branchId);
+          get().fetchHistoricalOrders();
+        }
       } else {
-        // Automatically provide default manager session if no auth exists
+        if (liveOrdersUnsub) {
+          liveOrdersUnsub();
+          liveOrdersUnsub = null;
+        }
+        if (ridersUnsub) {
+          ridersUnsub();
+          ridersUnsub = null;
+        }
         set({
-          user: {
-            uid: 'mgr_default_lead',
-            email: 'olivepizzarjn@gmail.com',
-            displayName: 'Restaurant Operations Manager'
-          } as any,
-          managerProfile: {
-            uid: 'mgr_default_lead',
-            name: 'Restaurant Operations Manager',
-            email: 'olivepizzarjn@gmail.com',
-            role: 'restaurant_manager',
-            branchId: 'main_branch',
-            branchName: 'Olive Pizza — Rajnandgaon (Main)',
-            permissions: ['dashboard.view', 'orders.live', 'orders.history', 'kitchen.kds', 'inventory.view', 'delivery.view'],
-            isActive: true
-          },
-          userRole: 'restaurant_manager',
-          isAuthorized: true,
+          user: null,
+          managerProfile: null,
+          userRole: null,
+          isAuthorized: false,
           isAuthChecking: false,
-          activeBranchId: 'main_branch',
-          activeBranchName: 'Olive Pizza — Rajnandgaon (Main)'
+          liveOrders: [],
+          historicalOrders: [],
+          riders: []
         });
-
-        get().subscribeToLiveOrders('main_branch');
-        get().subscribeToRiders('main_branch');
-        get().fetchHistoricalOrders();
       }
     });
   },
