@@ -73,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             </div>
 
             <a
-              href="http://localhost:5174/franchises"
+              href={import.meta.env.VITE_OWNER_PORTAL_URL || (import.meta.env.PROD ? 'https://owner.olivepizza.in/franchises' : 'http://localhost:5174/franchises')}
               className="hidden md:flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#1b241e] hover:bg-[#26332a] border border-[#26332a] text-[11px] text-[#a4c29c] hover:text-white font-bold transition-colors"
             >
               <ArrowLeft className="w-3 h-3" />
