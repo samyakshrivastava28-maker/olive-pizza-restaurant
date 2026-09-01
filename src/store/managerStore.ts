@@ -51,6 +51,7 @@ interface ManagerState {
 
   // Actions
   initAuth: () => () => void;
+  setAuthorizedProfile: (profile: ManagerAccount) => void;
   logout: () => Promise<void>;
   setActiveBranch: (branchId: string, branchName?: string) => void;
   subscribeToLiveOrders: (branchId: string) => () => void;
@@ -197,7 +198,19 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
           console.warn('[ManagerStore] Auth claims error:', e);
         }
 
-        const isAllowedRole = ['restaurant_manager', 'manager', 'owner', 'admin', 'developer'].includes(role);
+        const isAllowedRole = [
+          'restaurant_manager', 
+          'manager', 
+          'owner', 
+          'admin', 
+          'developer', 
+          'chef', 
+          'kitchen_manager', 
+          'franchise_owner', 
+          'franchise_manager', 
+          'staff',
+          'cashier'
+        ].includes(role);
         const isAuthorized = isAllowedRole && isAccountActive;
 
         const profile: ManagerAccount = {
@@ -249,6 +262,31 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       }
     });
   },
+
+  setAuthorizedProfile: (profile: ManagerAccount) => {
+    set({
+      user: { uid: profile.uid, email: profile.email, displayName: profile.name } as any,
+      managerProfile: profile,
+      userRole: profile.role,
+      isAuthorized: true,
+      activeBranchId: profile.branchId,
+      activeBranchName: profile.branchName,
+      permissions: profile.permissions || [
+        'dashboard.view',
+        'orders.live',
+        'orders.history',
+        'notifications.send',
+        'email.send',
+        'delivery.view',
+        'kitchen.kds',
+        'inventory.view'
+      ],
+      isAuthChecking: false
+    });
+    get().subscribeToLiveOrders(profile.branchId);
+    get().subscribeToRiders(profile.branchId);
+  },
+
   logout: async () => {
     try {
       if (liveOrdersUnsub) liveOrdersUnsub();

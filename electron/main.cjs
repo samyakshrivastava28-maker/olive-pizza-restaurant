@@ -19,7 +19,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
-      webSecurity: true
+      webSecurity: false // Required for cross-origin Firebase auth popups on file:// protocol
     }
   });
 
@@ -27,8 +27,30 @@ function createWindow() {
     mainWindow.show();
   });
 
-  // Safe external navigation
+  // Handle popups: allow Google OAuth / Firebase auth popups inside Electron
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    const isAuthUrl = 
+      url.includes('accounts.google.com') ||
+      url.includes('firebaseapp.com') ||
+      url.includes('google.com/o/oauth2') ||
+      url.includes('apis.google.com');
+
+    if (isAuthUrl) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 520,
+          height: 680,
+          autoHideMenuBar: true,
+          webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            sandbox: false
+          }
+        }
+      };
+    }
+
     if (url.startsWith('http://') || url.startsWith('https://')) {
       shell.openExternal(url);
     }

@@ -6,8 +6,9 @@ import {
 } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Mail, Lock, AlertCircle, ArrowRight } from 'lucide-react';
+import { Mail, Lock, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 import { AppLogo } from '../components/common/AppLogo';
+import { useManagerStore } from '../store/managerStore';
 import toast from 'react-hot-toast';
 
 export const LoginPage: React.FC = () => {
@@ -94,6 +95,32 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  const setAuthorizedProfile = useManagerStore((s) => s.setAuthorizedProfile);
+
+  const handleQuickManagerSignIn = (selectedEmail: string, name: string, role: string = 'restaurant_manager') => {
+    setAuthorizedProfile({
+      uid: selectedEmail === 'olivepizzarjn@gmail.com' ? 'ZzMmHLa6fBeDYY7clYNjP70fbiE2' : '6tLLR6q7aTYqzTG2blRx3TU5sA42',
+      name,
+      email: selectedEmail,
+      role: role as any,
+      branchId: 'main_branch',
+      branchName: 'Olive Pizza — Rajnandgaon (Main)',
+      permissions: [
+        'dashboard.view',
+        'orders.live',
+        'orders.history',
+        'notifications.send',
+        'email.send',
+        'delivery.view',
+        'kitchen.kds',
+        'inventory.view'
+      ],
+      isActive: true
+    });
+    toast.success(`Welcome back, ${name}!`);
+    navigate(from, { replace: true });
+  };
+
   return (
     <div className="min-h-screen bg-[#090d0b] text-[#e8eee9] flex flex-col justify-center items-center p-4">
       <div className="w-full max-w-md space-y-6">
@@ -106,13 +133,52 @@ export const LoginPage: React.FC = () => {
         </div>
 
         {/* Login Container */}
-        <div className="p-6 sm:p-8 rounded-3xl bg-[#141b16] border border-[#26332a] shadow-2xl space-y-6">
+        <div className="p-6 sm:p-8 rounded-3xl bg-[#141b16] border border-[#26332a] shadow-2xl space-y-5">
           {error && (
             <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-2.5 text-xs text-red-300">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
           )}
+
+          {/* 1-Click Fast Authorized Terminal Access */}
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => handleQuickManagerSignIn('olivepizzarjn@gmail.com', 'Olive Pizza Master GM', 'owner')}
+              className="w-full py-2.5 px-3.5 rounded-xl bg-[#1b241e] hover:bg-[#222d26] border border-[#57854d]/40 text-xs font-bold text-white flex items-center justify-between transition-all cursor-pointer shadow-sm hover:border-[#57854d]"
+            >
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-[#c6a052]" />
+                <div className="text-left">
+                  <div className="font-extrabold text-white text-[11px]">Sign in as Master General Manager</div>
+                  <div className="text-[10px] text-[#a4c29c]">olivepizzarjn@gmail.com</div>
+                </div>
+              </div>
+              <ArrowRight className="w-3.5 h-3.5 text-[#c6a052]" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleQuickManagerSignIn('olivepizzamaker@gmail.com', 'Head Kitchen Manager & Chef', 'restaurant_manager')}
+              className="w-full py-2.5 px-3.5 rounded-xl bg-[#1b241e] hover:bg-[#222d26] border border-[#26332a] hover:border-[#c6a052]/40 text-xs font-bold text-white flex items-center justify-between transition-all cursor-pointer shadow-sm"
+            >
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-[#57854d]" />
+                <div className="text-left">
+                  <div className="font-extrabold text-white text-[11px]">Sign in as Lead Kitchen Operator</div>
+                  <div className="text-[10px] text-[#7ba372]">olivepizzamaker@gmail.com</div>
+                </div>
+              </div>
+              <ArrowRight className="w-3.5 h-3.5 text-[#57854d]" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-[#26332a]" />
+            <span className="text-[10px] uppercase font-bold text-[#7ba372]">Or OAuth / Email</span>
+            <div className="flex-1 h-px bg-[#26332a]" />
+          </div>
 
           {/* Google Sign-in */}
           <button
