@@ -1,6 +1,6 @@
 {
   "appId": "in.olivepizza.manager",
-  "productName": "Olive Pizza Manager",
+  "productName": "Olive Pizza Restaurant",
   "directories": {
     "buildResources": "electron/resources",
     "output": "dist-electron"
@@ -12,17 +12,27 @@
   ],
   "win": {
     "target": [{ "target": "nsis", "arch": ["x64"] }],
-    "icon": "electron/resources/icon.ico"
+    "artifactName": "OlivePizzaRestaurant-Setup.${ext}",
+    "icon": "electron/resources/icon.png"
   },
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
-    "shortcutName": "Olive Pizza Manager"
+    "createStartMenuShortcut": true,
+    "shortcutName": "Olive Pizza Restaurant"
   },
   "mac": {
     "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
+    "artifactName": "OlivePizzaRestaurant.${ext}",
     "category": "public.app-category.business",
-    "icon": "electron/resources/icon.icns"
+    "icon": "electron/resources/icon.png"
+  },
+  "dmg": {
+    "title": "Olive Pizza Restaurant",
+    "contents": [
+      { "x": 130, "y": 220 },
+      { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+    ]
   }
 }

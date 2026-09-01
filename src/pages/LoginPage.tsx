@@ -6,7 +6,8 @@ import {
 } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Pizza, ShieldCheck, Mail, Lock, AlertCircle, ArrowRight } from 'lucide-react';
+import { Mail, Lock, AlertCircle, ArrowRight } from 'lucide-react';
+import { AppLogo } from '../components/common/AppLogo';
 import toast from 'react-hot-toast';
 
 export const LoginPage: React.FC = () => {
@@ -97,18 +98,9 @@ export const LoginPage: React.FC = () => {
     <div className="min-h-screen bg-[#090d0b] text-[#e8eee9] flex flex-col justify-center items-center p-4">
       <div className="w-full max-w-md space-y-6">
         {/* Brand Card */}
-        <div className="text-center space-y-3">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-[#57854d] to-[#2c4327] border border-[#7ba372]/40 shadow-2xl shadow-green-950/60 mb-1">
-            <Pizza className="w-8 h-8 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-extrabold text-white tracking-tight">OLIVE PIZZA</h1>
-            <div className="flex items-center justify-center gap-1.5 mt-1 text-xs font-bold text-[#c6a052] uppercase tracking-wider">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>RESTAURANT MANAGER</span>
-            </div>
-          </div>
-          <p className="text-xs text-[#a4c29c]">
+        <div className="flex flex-col items-center text-center space-y-3">
+          <AppLogo variant="full" size="xl" subtitle="Restaurant Management" />
+          <p className="text-xs text-[#a4c29c] max-w-sm pt-1">
             Secure management portal for authorized branch managers, chefs, and restaurant operators.
           </p>
         </div>

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AppLayout } from './components/layout/AppLayout';
 import { useManagerStore } from './store/managerStore';
@@ -24,7 +24,7 @@ export function App() {
   }, [initAuth]);
 
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Toaster 
         position="top-right" 
         toastOptions={{
@@ -69,7 +69,7 @@ export function App() {
         {/* Wildcard Fallback */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 

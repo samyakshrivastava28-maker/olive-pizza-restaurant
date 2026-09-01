@@ -1,4 +1,4 @@
-name: Build Windows — Restaurant
+﻿name: Build Windows — Restaurant
 
 on:
   workflow_dispatch:
@@ -27,7 +27,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v4
         with:
-          name: OlivePizza-Restaurant-Windows-Installer
+          name: OlivePizzaRestaurant-Windows-Installer
           path: dist-electron/*.exe
           retention-days: 30
       - name: Build status

@@ -13,6 +13,7 @@ import {
   X,
   ShieldCheck
 } from 'lucide-react';
+import { AppLogo } from '../common/AppLogo';
 import { useManagerStore } from '../../store/managerStore';
 
 interface SidebarProps {
@@ -86,18 +87,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       }`}>
         {/* Brand Header */}
         <div>
-          <div className="p-5 border-b border-[#26332a] flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#57854d] to-[#2c4327] border border-[#7ba372]/40 flex items-center justify-center shadow-lg">
-                <Pizza className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-sm font-extrabold text-white tracking-tight leading-none">OLIVE PIZZA</h1>
-                <span className="text-[10px] font-bold text-[#c6a052] tracking-wider uppercase block mt-1">
-                  RESTAURANT MANAGER
-                </span>
-              </div>
-            </div>
+          <div className="p-4 border-b border-[#26332a] flex items-center justify-between">
+            <AppLogo variant="full" size="md" subtitle="Restaurant Management" />
 
             <button 
               onClick={onClose} 

@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 .pnp
 .pnp.js
@@ -6,6 +6,7 @@ node_modules/
 # Build & Output
 dist/
 dist-ssr/
+dist-electron/
 build/
 coverage/
 *.local
