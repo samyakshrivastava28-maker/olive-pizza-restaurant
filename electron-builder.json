@@ -29,6 +29,7 @@
     "icon": "electron/resources/icon.png"
   },
   "dmg": {
+    "background": null,
     "title": "Olive Pizza Restaurant",
     "contents": [
       { "x": 130, "y": 220 },
