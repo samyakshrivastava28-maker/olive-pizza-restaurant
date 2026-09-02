@@ -1,6 +1,7 @@
 {
   "appId": "in.olivepizza.manager",
   "productName": "Olive Pizza Restaurant",
+  "npmRebuild": false,
   "directories": {
     "buildResources": "electron/resources",
     "output": "dist-electron"
@@ -30,10 +31,9 @@
   },
   "dmg": {
     "background": null,
-    "title": "Olive Pizza Restaurant",
-    "contents": [
-      { "x": 130, "y": 220 },
-      { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
-    ]
+    "window": {
+      "width": 540,
+      "height": 380
+    }
   }
 }
