@@ -15,6 +15,8 @@ import { LoginPage } from './pages/LoginPage';
 import { InventoryManager } from './pages/InventoryManager';
 import { MenuManagementPage } from './pages/MenuManagementPage';
 
+import PushNotificationManager from './services/PushNotificationManager';
+
 export function App() {
   const initAuth = useManagerStore((s) => s.initAuth);
 
@@ -25,6 +27,7 @@ export function App() {
 
   return (
     <HashRouter>
+      <PushNotificationManager />
       <Toaster 
         position="top-right" 
         toastOptions={{

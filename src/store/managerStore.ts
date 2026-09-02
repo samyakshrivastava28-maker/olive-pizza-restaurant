@@ -49,12 +49,25 @@ interface ManagerState {
   notificationHistory: NotificationRecord[];
   emailHistory: EmailRecord[];
 
+  // Live Restaurant Operational Status
+  restaurantStatus: {
+    isOpen: boolean;
+    acceptingOrders: boolean;
+    closeReason?: string;
+    operatingHours?: Record<string, { open: string; close: string; isOpen?: boolean }>;
+    updatedAt?: string;
+    updatedBy?: string;
+  } | null;
+  isStatusLoading: boolean;
+
   // Actions
   initAuth: () => () => void;
   setAuthorizedProfile: (profile: ManagerAccount) => void;
   logout: () => Promise<void>;
   setActiveBranch: (branchId: string, branchName?: string) => void;
   subscribeToLiveOrders: (branchId: string) => () => void;
+  subscribeToRestaurantStatus: (branchId: string) => () => void;
+  toggleRestaurantStatus: (isOpen: boolean, reason?: string) => Promise<boolean>;
   fetchHistoricalOrders: (params?: { search?: string; status?: string; fulfillment?: string; dateRange?: string }) => Promise<void>;
   updateOrderStatus: (orderId: string, nextStatus: OrderStatus, reason?: string) => Promise<boolean>;
   subscribeToRiders: (branchId: string) => () => void;
@@ -66,6 +79,7 @@ interface ManagerState {
 }
 
 let liveOrdersUnsub: Unsubscribe | null = null;
+let statusUnsub: Unsubscribe | null = null;
 let ridersUnsub: Unsubscribe | null = null;
 
 const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
@@ -106,6 +120,9 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
 
   notificationHistory: [],
   emailHistory: [],
+
+  restaurantStatus: null,
+  isStatusLoading: false,
 
     initAuth: () => {
     // Quick safety timeout so auth checking NEVER hangs on a dark/black screen
@@ -285,12 +302,14 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
     });
     get().subscribeToLiveOrders(profile.branchId);
     get().subscribeToRiders(profile.branchId);
+    get().subscribeToRestaurantStatus(profile.branchId);
   },
 
   logout: async () => {
     try {
       if (liveOrdersUnsub) liveOrdersUnsub();
       if (ridersUnsub) ridersUnsub();
+      if (statusUnsub) { statusUnsub(); statusUnsub = null; }
       await signOut(auth);
       set({ user: null, managerProfile: null, isAuthorized: false, liveOrders: [] });
     } catch (e) {
@@ -305,6 +324,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
     });
     get().subscribeToLiveOrders(branchId);
     get().subscribeToRiders(branchId);
+    get().subscribeToRestaurantStatus(branchId);
     get().fetchHistoricalOrders();
   },
 
@@ -493,6 +513,96 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       }
     } catch (err) {
       console.error('[ManagerStore] Error updating order status:', err);
+      set({ isActionLoading: false });
+      return false;
+    }
+  },
+
+  subscribeToRestaurantStatus: (branchId: string) => {
+    if (statusUnsub) {
+      statusUnsub();
+      statusUnsub = null;
+    }
+    set({ isStatusLoading: true });
+
+    try {
+      const docRef = doc(db, 'restaurant_settings', branchId || 'main_branch');
+      statusUnsub = onSnapshot(docRef, (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          set({
+            restaurantStatus: {
+              isOpen: data.isOpen !== false,
+              acceptingOrders: data.acceptingOrders !== false,
+              closeReason: data.closeReason || '',
+              operatingHours: data.operatingHours || {},
+              updatedAt: data.updatedAt,
+              updatedBy: data.updatedBy
+            },
+            isStatusLoading: false
+          });
+        } else {
+          set({
+            restaurantStatus: {
+              isOpen: true,
+              acceptingOrders: true,
+              closeReason: '',
+              operatingHours: {}
+            },
+            isStatusLoading: false
+          });
+        }
+      }, (err) => {
+        console.warn('[ManagerStore] Restaurant status listener notice:', err);
+        set({ isStatusLoading: false });
+      });
+    } catch (err) {
+      console.error('[ManagerStore] Error in subscribeToRestaurantStatus:', err);
+      set({ isStatusLoading: false });
+    }
+
+    return () => {
+      if (statusUnsub) {
+        statusUnsub();
+        statusUnsub = null;
+      }
+    };
+  },
+
+  toggleRestaurantStatus: async (isOpen: boolean, reason?: string) => {
+    const { activeBranchId } = get();
+    set({ isActionLoading: true });
+    try {
+      const res = await fetchApi('/restaurant/status', {
+        method: 'PUT',
+        body: JSON.stringify({
+          branchId: activeBranchId,
+          isOpen,
+          acceptingOrders: isOpen,
+          closeReason: reason || (isOpen ? '' : 'Manually paused by manager')
+        })
+      });
+
+      if (res && (res.success || (res as any).status === 200)) {
+        set((state) => ({
+          restaurantStatus: state.restaurantStatus ? {
+            ...state.restaurantStatus,
+            isOpen,
+            acceptingOrders: isOpen,
+            closeReason: reason || (isOpen ? '' : 'Manually paused by manager')
+          } : {
+            isOpen,
+            acceptingOrders: isOpen,
+            closeReason: reason || (isOpen ? '' : 'Manually paused by manager')
+          },
+          isActionLoading: false
+        }));
+        return true;
+      }
+      set({ isActionLoading: false });
+      return false;
+    } catch (err) {
+      console.error('[ManagerStore] Error toggling restaurant status:', err);
       set({ isActionLoading: false });
       return false;
     }

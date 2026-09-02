@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   ShoppingBag, 
   CheckCircle2, 
@@ -9,10 +9,14 @@ import {
   BellRing, 
   Truck, 
   Bike, 
-  Activity,
-  ArrowRight,
-  TrendingUp,
-  Flame
+  Activity, 
+  ArrowRight, 
+  TrendingUp, 
+  Flame,
+  Store,
+  Power,
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
 import { useManagerStore } from '../store/managerStore';
 import { Link } from 'react-router-dom';
@@ -22,10 +26,34 @@ export const DashboardPage: React.FC = () => {
     activeBranchName, 
     liveOrders, 
     riders, 
-    getDashboardStats 
+    getDashboardStats,
+    restaurantStatus,
+    isActionLoading,
+    toggleRestaurantStatus
   } = useManagerStore();
 
+  const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
+  const [closeReason, setCloseReason] = useState('Kitchen Overload / Peak Rush');
+
   const stats = getDashboardStats();
+
+  const isRestaurantOpen = restaurantStatus?.isOpen !== false && restaurantStatus?.acceptingOrders !== false;
+
+  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const todayKey = days[new Date().getDay()];
+  const todayHours = restaurantStatus?.operatingHours?.[todayKey] || { open: '10:00', close: '23:00' };
+  const scheduleHours = `${todayHours.open || '10:00'} - ${todayHours.close || '23:00'}`;
+
+  const handleCloseRestaurant = async () => {
+    const success = await toggleRestaurantStatus(false, closeReason);
+    if (success) {
+      setIsCloseModalOpen(false);
+    }
+  };
+
+  const handleOpenRestaurant = async () => {
+    await toggleRestaurantStatus(true, '');
+  };
 
   return (
     <div className="space-y-6">
@@ -58,6 +86,143 @@ export const DashboardPage: React.FC = () => {
             </Link>
           </div>
         </div>
+      </div>
+
+      {/* RESTAURANT OPERATIONAL STATUS & LIVE OVERRIDE CARD */}
+      <div className={`p-5 rounded-2xl border transition-all ${
+        isRestaurantOpen 
+          ? 'bg-gradient-to-r from-[#122416] via-[#152e1c] to-[#122416] border-emerald-600/40 shadow-[0_4px_25px_rgba(16,185,129,0.15)]' 
+          : 'bg-gradient-to-r from-[#2a1313] via-[#351818] to-[#2a1313] border-red-600/40 shadow-[0_4px_25px_rgba(239,68,68,0.15)]'
+      }`}>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className={`p-3 rounded-2xl border flex items-center justify-center flex-shrink-0 ${
+              isRestaurantOpen 
+                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' 
+                : 'bg-red-500/15 border-red-500/30 text-red-400'
+            }`}>
+              <Store className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className={`w-2.5 h-2.5 rounded-full ${
+                  isRestaurantOpen ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'
+                }`} />
+                <h3 className="text-base font-bold text-white tracking-wide flex items-center gap-2">
+                  {isRestaurantOpen ? 'RESTAURANT IS OPEN & ACCEPTING ORDERS' : 'RESTAURANT IS CURRENTLY CLOSED'}
+                </h3>
+              </div>
+              <p className="text-xs text-[#a4c29c] mt-0.5 flex flex-wrap items-center gap-2">
+                <span>Branch: <strong className="text-white">{activeBranchName}</strong></span>
+                <span className="text-[#57854d]">•</span>
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-[#c6a052]" />
+                  Today's Schedule: <strong className="text-white">{scheduleHours}</strong>
+                </span>
+                {!isRestaurantOpen && restaurantStatus?.closeReason && (
+                  <>
+                    <span className="text-red-400">•</span>
+                    <span className="text-red-300 font-medium">Reason: {restaurantStatus.closeReason}</span>
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 self-end sm:self-auto">
+            {isRestaurantOpen ? (
+              <button
+                type="button"
+                disabled={isActionLoading}
+                onClick={() => setIsCloseModalOpen(true)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-red-200 bg-red-950/60 hover:bg-red-900/80 border border-red-700/50 hover:border-red-500 transition-all flex items-center gap-2 shadow-lg disabled:opacity-50"
+              >
+                <Power className="w-4 h-4 text-red-400" />
+                <span>Pause / Close Branch</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={isActionLoading}
+                onClick={handleOpenRestaurant}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 border border-emerald-400/40 transition-all flex items-center gap-2 shadow-lg shadow-emerald-950/40 disabled:opacity-50"
+              >
+                {isActionLoading ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : <Power className="w-4 h-4 text-white" />}
+                <span>Open Restaurant & Resume Orders</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Modal for specifying close reason */}
+        {isCloseModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <div className="relative w-full max-w-md bg-[#18221b] border border-red-500/40 rounded-2xl p-6 shadow-2xl">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2.5 rounded-xl bg-red-500/10 text-red-400 border border-red-500/30">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-base font-bold text-white">Pause Restaurant Ordering</h4>
+                  <p className="text-xs text-[#a4c29c]">Customers will not be able to place new orders.</p>
+                </div>
+              </div>
+
+              <div className="space-y-3 mb-5">
+                <label className="text-xs font-semibold text-[#a4c29c] block">
+                  Select or Enter Closure Reason:
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    'Kitchen Overload / Peak Rush',
+                    'Ingredient Shortage',
+                    'Emergency Maintenance',
+                    'Shift Handover'
+                  ].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setCloseReason(preset)}
+                      className={`px-3 py-2 text-[11px] rounded-lg border text-left transition-all ${
+                        closeReason === preset
+                          ? 'bg-red-500/20 border-red-500 text-white font-bold'
+                          : 'bg-[#141b16] border-[#26332a] text-[#a4c29c] hover:border-[#57854d]'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={closeReason}
+                  onChange={(e) => setCloseReason(e.target.value)}
+                  placeholder="Or enter custom reason..."
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-[#141b16] border border-[#26332a] text-white focus:outline-none focus:border-red-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsCloseModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-[#a4c29c] hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isActionLoading}
+                  onClick={handleCloseRestaurant}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-500 transition-all flex items-center gap-2"
+                >
+                  {isActionLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Confirm Branch Closure
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* TODAY'S SUMMARY KPI CARDS */}

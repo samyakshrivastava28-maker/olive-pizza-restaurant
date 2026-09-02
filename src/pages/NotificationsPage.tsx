@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Bell, 
   Send, 
@@ -9,11 +9,15 @@ import {
   AlertCircle, 
   History,
   Image as ImageIcon,
-  Link2
+  Link2,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { useManagerStore } from '../store/managerStore';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import { NotificationPermissionManager, NotificationPermissionState } from '../lib/NotificationPermissionManager';
+import { SoundAlertEngine } from '../lib/SoundAlertEngine';
 
 export const NotificationsPage: React.FC = () => {
   const { 
@@ -28,6 +32,33 @@ export const NotificationsPage: React.FC = () => {
   const [imageUrl, setImageUrl] = useState('');
   const [deepLink, setDeepLink] = useState('');
   const [isSending, setIsSending] = useState(false);
+
+  // Device settings state
+  const [permState, setPermState] = useState<NotificationPermissionState>('NOT_DETERMINED');
+  const [isMuted, setIsMuted] = useState(false);
+
+  useEffect(() => {
+    NotificationPermissionManager.checkPermission().then(info => setPermState(info.state));
+    const settings = SoundAlertEngine.getSettings();
+    setIsMuted(settings.muted);
+  }, []);
+
+  const handleTestSound = () => {
+    SoundAlertEngine.playSound('new_order');
+    toast.success('Playing high-priority new order alarm');
+  };
+
+  const handleToggleMute = () => {
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    SoundAlertEngine.saveSettings({ muted: nextMuted });
+    toast(nextMuted ? 'Alert sounds muted' : 'Alert sounds unmuted', { icon: nextMuted ? '🔇' : '🔊' });
+  };
+
+  const handleOpenSettings = async () => {
+    const msg = await NotificationPermissionManager.openSettingsInstructions();
+    toast(msg, { duration: 6000 });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,6 +99,57 @@ export const NotificationsPage: React.FC = () => {
         <p className="text-xs text-[#a4c29c] mt-0.5">
           Dispatch operational push notifications to customers, kitchen staff, or delivery partners for {activeBranchName}.
         </p>
+      </div>
+
+      {/* Device Notification & Audio Alert Controls */}
+      <div className="p-4 rounded-2xl bg-[#141b16] border border-[#26332a] flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-[#57854d]/20 text-[#57854d] flex items-center justify-center">
+            <Volume2 className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              Kitchen Urgent Sound Alerts
+              <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                permState === 'GRANTED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                permState === 'BLOCKED' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' :
+                'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+              }`}>
+                {permState}
+              </span>
+            </h3>
+            <p className="text-xs text-[#a4c29c]">High-priority 4-tone alarm sounds whenever a new order arrives.</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={handleTestSound}
+            className="px-3 py-1.5 rounded-xl bg-[#26332a] hover:bg-[#344439] text-xs font-bold text-white flex items-center gap-1.5 transition"
+          >
+            <Volume2 className="w-3.5 h-3.5 text-[#57854d]" /> Test Sound
+          </button>
+          <button
+            type="button"
+            onClick={handleToggleMute}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${
+              isMuted ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+            }`}
+          >
+            {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+            {isMuted ? 'Muted' : 'Sound ON'}
+          </button>
+          {permState === 'BLOCKED' && (
+            <button
+              type="button"
+              onClick={handleOpenSettings}
+              className="px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs hover:bg-amber-400 transition"
+            >
+              Open Settings
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

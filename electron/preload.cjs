@@ -1,4 +1,4 @@
-﻿const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('restaurantDesktop', {
   isDesktopManager: true,
@@ -9,6 +9,11 @@ contextBridge.exposeInMainWorld('restaurantDesktop', {
   minimize: () => ipcRenderer.invoke('window-minimize'),
   maximize: () => ipcRenderer.invoke('window-maximize'),
   toggleFullscreen: () => ipcRenderer.invoke('window-toggle-fullscreen'),
-  isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
-  close: () => ipcRenderer.invoke('window-close')
+  close: () => ipcRenderer.invoke('window-close'),
+  showNativeNotification: (opts) => ipcRenderer.invoke('show-native-notification', opts)
+});
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  isElectron: true,
+  showNativeNotification: (opts) => ipcRenderer.invoke('show-native-notification', opts)
 });

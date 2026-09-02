@@ -1,4 +1,4 @@
-﻿const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Notification } = require('electron');
 const path = require('path');
 
 let mainWindow = null;
@@ -181,6 +181,29 @@ ipcMain.handle('window-is-maximized', () => {
 
 ipcMain.handle('window-close', () => {
   if (mainWindow) mainWindow.close();
+});
+
+// 5. Native Desktop Notifications for New Orders
+ipcMain.handle('show-native-notification', (event, { title, body, orderId }) => {
+  if (Notification.isSupported()) {
+    const notif = new Notification({
+      title: title || 'Olive Pizza — Kitchen Alert',
+      body: body || 'New urgent order received!',
+      icon: path.join(__dirname, 'resources', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
+      silent: false
+    });
+    notif.on('click', () => {
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+      }
+    });
+    notif.show();
+    if (mainWindow && !mainWindow.isFocused()) {
+      mainWindow.flashFrame(true);
+    }
+  }
+  return { success: true };
 });
 
 // ─── APP LIFECYCLE ──────────────────────────────────────────────────────────
