@@ -27,6 +27,10 @@ function createWindow() {
     mainWindow.show();
   });
 
+  // Strip Electron from User-Agent to prevent Google OAuth disallowed_useragent rejection
+  const currentUserAgent = mainWindow.webContents.getUserAgent();
+  mainWindow.webContents.setUserAgent(currentUserAgent.replace(/Electron\/[0-9\.]+\s/g, ''));
+
   // Handle popups: allow Google OAuth / Firebase auth popups inside Electron
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     const isAuthUrl = 

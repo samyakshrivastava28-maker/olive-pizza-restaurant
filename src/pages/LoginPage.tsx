@@ -8,7 +8,6 @@ import { auth, googleProvider } from '../lib/firebase';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Mail, Lock, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 import { AppLogo } from '../components/common/AppLogo';
-import { useManagerStore } from '../store/managerStore';
 import toast from 'react-hot-toast';
 
 export const LoginPage: React.FC = () => {
@@ -95,30 +94,11 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const setAuthorizedProfile = useManagerStore((s) => s.setAuthorizedProfile);
-
-  const handleQuickManagerSignIn = (selectedEmail: string, name: string, role: string = 'restaurant_manager') => {
-    setAuthorizedProfile({
-      uid: selectedEmail === 'olivepizzarjn@gmail.com' ? 'ZzMmHLa6fBeDYY7clYNjP70fbiE2' : '6tLLR6q7aTYqzTG2blRx3TU5sA42',
-      name,
-      email: selectedEmail,
-      role: role as any,
-      branchId: 'main_branch',
-      branchName: 'Olive Pizza — Rajnandgaon (Main)',
-      permissions: [
-        'dashboard.view',
-        'orders.live',
-        'orders.history',
-        'notifications.send',
-        'email.send',
-        'delivery.view',
-        'kitchen.kds',
-        'inventory.view'
-      ],
-      isActive: true
+  const handleQuickManagerSignIn = (selectedEmail: string, name: string, _role?: string) => {
+    setEmail(selectedEmail);
+    toast(`Selected ${name} (${selectedEmail}). Sign in with password or Google to establish your session.`, {
+      icon: '🔐',
     });
-    toast.success(`Welcome back, ${name}!`);
-    navigate(from, { replace: true });
   };
 
   return (
