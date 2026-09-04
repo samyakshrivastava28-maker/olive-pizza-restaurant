@@ -10,6 +10,12 @@ const config: CapacitorConfig = {
   },
   ios: {
     contentInset: 'always'
+  },
+  plugins: {
+    FirebaseAuthentication: {
+      skipNativeAuth: false,
+      providers: ['google.com']
+    }
   }
 };
 
