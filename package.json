@@ -20,6 +20,7 @@
     "@capacitor/cli": "^7.6.8",
     "@capacitor/core": "^7.6.8",
     "@capacitor/ios": "^7.6.8",
+    "@capacitor/push-notifications": "^7.0.7",
     "date-fns": "^4.1.0",
     "firebase": "^11.2.0",
     "lucide-react": "^0.475.0",

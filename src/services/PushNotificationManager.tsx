@@ -9,11 +9,41 @@ import { NotificationDeduplicator } from '../lib/NotificationDeduplicator';
 import { Bell, Volume2, CheckCircle, X, ShoppingBag } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+import { PushNotifications } from '@capacitor/push-notifications';
+import { Capacitor } from '@capacitor/core';
+
 export default function PushNotificationManager() {
   const { user, managerProfile, activeBranchId, updateOrderStatus } = useManagerStore();
   const [showPromptBanner, setShowPromptBanner] = useState(false);
   const [newOrderAlert, setNewOrderAlert] = useState<any | null>(null);
   const isRegisteredRef = useRef(false);
+
+  // Create Android Notification Channels for High-Urgency Orders
+  const createChannels = useCallback(async () => {
+    if (!Capacitor.isNativePlatform()) return;
+    try {
+      await PushNotifications.createChannel({
+        id: 'olive_order_new',
+        name: 'New Orders',
+        description: 'Critical incoming order alerts. Wakes device and sounds kitchen alarm.',
+        importance: 5,
+        visibility: 1,
+        vibration: true,
+        sound: 'order_alert',
+      });
+      await PushNotifications.createChannel({
+        id: 'olive_system',
+        name: 'System Alerts',
+        description: 'System announcements and management updates',
+        importance: 4,
+        visibility: 1,
+        vibration: true,
+        sound: 'system_alert',
+      });
+    } catch (e) {
+      console.warn('[Restaurant PushManager] Channel creation notice:', e);
+    }
+  }, []);
 
   // 1. Evaluate Permission State on Auth
   useEffect(() => {
@@ -27,6 +57,23 @@ export default function PushNotificationManager() {
       }
     });
   }, [user, managerProfile]);
+
+  // BroadcastChannel listener for Service Worker background alerts
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
+    const channel = new BroadcastChannel('olive_pizza_notifications');
+    channel.onmessage = (event) => {
+      const data = event.data || {};
+      if (data.type === 'START_ALERT') {
+        SoundAlertEngine.startContinuousAlarm('new_order');
+      } else if (data.type === 'STOP_ALERT') {
+        SoundAlertEngine.stopAlarm();
+      }
+    };
+    return () => {
+      channel.close();
+    };
+  }, []);
 
   // 2. Token Registration (Idempotent, role & branch scoped)
   const registerToken = useCallback(async () => {
@@ -49,15 +96,62 @@ export default function PushNotificationManager() {
         return;
       }
 
+      // Native Capacitor on Android / iOS
+      if (Capacitor.isNativePlatform()) {
+        await createChannels();
+
+        let permStatus = await PushNotifications.checkPermissions();
+        if (permStatus.receive === 'prompt' || permStatus.receive === ('prompt-with-rationale' as any)) {
+          permStatus = await PushNotifications.requestPermissions();
+        }
+        if (permStatus.receive !== 'granted') {
+          console.warn('[Restaurant PushManager] Native push permission not granted');
+          return;
+        }
+
+        await PushNotifications.removeAllListeners();
+
+        PushNotifications.addListener('registration', async (pushToken) => {
+          if (pushToken.value) {
+            await fetchApi('/api/notifications/token', {
+              method: 'POST',
+              body: JSON.stringify({
+                token: pushToken.value,
+                platform: Capacitor.getPlatform(),
+                deviceName: `${Capacitor.getPlatform().toUpperCase()} Kitchen Terminal`,
+                appName: 'restaurant',
+                role: 'restaurant_manager',
+                branchId: activeBranchId || managerProfile?.branchId || 'main_branch'
+              })
+            }).catch(() => {});
+            isRegisteredRef.current = true;
+          }
+        });
+
+        PushNotifications.addListener('registrationError', (error) => {
+          console.error('[Restaurant PushManager] Registration error:', error);
+        });
+
+        PushNotifications.addListener('pushNotificationReceived', (notification) => {
+          console.log('[Restaurant PushManager] Push received in foreground:', notification);
+          SoundAlertEngine.startContinuousAlarm('new_order');
+        });
+
+        await PushNotifications.register();
+        return;
+      }
+
       // Web Push via Service Worker & Firebase Messaging
       if ('serviceWorker' in navigator && 'Notification' in window && Notification.permission === 'granted') {
+        const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js').catch(() => null);
         const { getMessaging, getToken, isSupported } = await import('firebase/messaging');
         const { app } = await import('../lib/firebase');
         const supported = await isSupported().catch(() => false);
         if (supported) {
           const messaging = getMessaging(app);
           const currentToken = await getToken(messaging, {
-            vapidKey: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkGsZ_994Re362vMV24HgGpx0GuqTTAqwWRWtd9USQ'
+            vapidKey: 'BDfxvZSqSw6Es3dvXz4VZMwjNFKMCCfRSgdCVty3rfqqBZ6AAWFlZ2EwWQR8ltp6DRMTUKOmH9Rlu0fjCziOKDk',
+            serviceWorkerRegistration: swReg || undefined
           }).catch(() => null);
 
           if (currentToken) {
@@ -79,7 +173,7 @@ export default function PushNotificationManager() {
     } catch (err: any) {
       console.warn('[Restaurant PushManager] Token registration warning:', err.message);
     }
-  }, [user, activeBranchId, managerProfile]);
+  }, [user, activeBranchId, managerProfile, createChannels]);
 
   // 3. User clicks "Enable Kitchen Alerts"
   const handleEnablePermission = async () => {
