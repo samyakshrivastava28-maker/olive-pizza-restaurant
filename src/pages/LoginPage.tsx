@@ -13,6 +13,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Mail, Lock, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 import { AppLogo } from '../components/common/AppLogo';
 import toast from 'react-hot-toast';
+import { requestPostLoginNotificationPermissions } from '../services/notificationPermissionService';
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -60,6 +61,7 @@ export const LoginPage: React.FC = () => {
         await signInWithPopup(auth, googleProvider);
       }
       toast.success('Signed in successfully');
+      requestPostLoginNotificationPermissions().catch(() => {});
       navigate(from, { replace: true });
     } catch (err: any) {
       console.error('[Login] Google sign-in failed:', err);
@@ -82,6 +84,7 @@ export const LoginPage: React.FC = () => {
     try {
       await signInWithEmailAndPassword(auth, email.trim(), password);
       toast.success('Welcome to Restaurant Management');
+      requestPostLoginNotificationPermissions().catch(() => {});
       navigate(from, { replace: true });
     } catch (err: any) {
       console.error('[Login] Email sign-in failed:', err);
