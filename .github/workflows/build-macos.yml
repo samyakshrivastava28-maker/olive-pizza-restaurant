@@ -18,7 +18,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-      - run: npm ci
+      - run: npm ci --legacy-peer-deps
       - name: Build frontend
         run: npm run build
         env:
@@ -35,7 +35,24 @@ jobs:
           name: OlivePizzaRestaurant-macOS-Installer
           path: dist-electron/*.dmg
           retention-days: 14
-      - name: Create GitHub Release
+      # Create or Update Unified GitHub Release (All Platforms)
+      - name: Create or Update Unified GitHub Release
+        id: create_unified_release
+        continue-on-error: true
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
+        with:
+          name: "Olive Pizza Restaurant — Latest Release (All Platforms)"
+          tag_name: "latest"
+          files: dist-electron/*.dmg
+          draft: false
+          prerelease: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Create Versioned GitHub Release
+      - name: Create Versioned GitHub Release
         id: create_release
         continue-on-error: true
         uses: softprops/action-gh-release@v2
@@ -46,6 +63,7 @@ jobs:
           files: dist-electron/*.dmg
           draft: false
           prerelease: false
+          make_latest: false
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
