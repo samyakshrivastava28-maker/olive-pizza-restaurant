@@ -80,6 +80,14 @@ export interface Order {
   cancellationReason?: string;
   rejectionReason?: string;
   estimatedPreparationMinutes?: number;
+  expectedReadyAt?: string;
+  acceptedAt?: string;
+  preparingAt?: string;
+  partnerAssignedAt?: string;
+  readyAt?: string;
+  pickedUpAt?: string;
+  outForDeliveryAt?: string;
+  deliveredAt?: string;
   branchId?: string;
   branchName?: string;
   createdAt: any;

@@ -6,11 +6,10 @@ import {
   orderBy, 
   limit, 
   onSnapshot, 
-  type Unsubscribe, 
+  type Unsubscribe,
   getDocs,
-  getDoc,
   doc,
-  Timestamp 
+  Timestamp
 } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
@@ -31,6 +30,9 @@ interface ManagerState {
   userRole: string | null;
   isAuthChecking: boolean;
   isAuthorized: boolean;
+  restrictedReason: string | null;
+  restrictedEmail: string | null;
+  clearRestricted: () => void;
   activeBranchId: string;
   activeBranchName: string;
   permissions: string[];
@@ -99,6 +101,9 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   userRole: null,
   isAuthChecking: true,
   isAuthorized: false,
+  restrictedReason: null,
+  restrictedEmail: null,
+  clearRestricted: () => set({ restrictedReason: null, restrictedEmail: null }),
   activeBranchId: 'main_branch',
   activeBranchName: 'Olive Pizza — Rajnandgaon (Main)',
   permissions: [
@@ -124,138 +129,120 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   restaurantStatus: null,
   isStatusLoading: false,
 
-    initAuth: () => {
+  initAuth: () => {
     // Quick safety timeout so auth checking NEVER hangs on a dark/black screen
     const safetyTimer = setTimeout(() => {
       if (get().isAuthChecking) {
         console.warn('[ManagerStore] Auth check safety timer triggered -> transitioning to ready');
         set({ isAuthChecking: false });
       }
-    }, 1500);
+    }, 2000);
 
     return onAuthStateChanged(auth, async (currentUser) => {
       clearTimeout(safetyTimer);
       if (currentUser) {
-        let role = 'restaurant_manager';
-        let branchId = 'main_branch';
-        let branchName = 'Olive Pizza — Rajnandgaon (Main)';
-        let permissions = [
-          'dashboard.view',
-          'orders.live',
-          'orders.history',
-          'notifications.send',
-          'email.send',
-          'delivery.view',
-          'kitchen.kds',
-          'inventory.view'
-        ];
-        let isAccountActive = true;
+        const emailLower = (currentUser.email || '').toLowerCase().trim();
+        const branchId = get().activeBranchId || 'main_branch';
 
         try {
-          const emailLower = (currentUser.email || '').toLowerCase().trim();
-          const isMasterOwner = emailLower === 'webhub2811@gmail.com' || emailLower === 'olivepizzarjn@gmail.com' || emailLower === 'olivepizzamaker@gmail.com';
+          const resp = await fetchApi<any>('/api/auth/authorize-app', {
+            method: 'POST',
+            body: JSON.stringify({
+              targetApp: 'RESTAURANT_MANAGER',
+              requestedBranchId: branchId
+            })
+          });
 
-          if (isMasterOwner) {
-            role = 'owner';
-            isAccountActive = true;
-            branchId = 'main_branch';
-            branchName = 'Olive Pizza — Rajnandgaon HQ';
+          if (resp && resp.authorized) {
+            const u = resp.user;
+            const profile: ManagerAccount = {
+              uid: currentUser.uid,
+              name: u.name || currentUser.displayName || emailLower.split('@')[0] || 'Restaurant Manager',
+              email: currentUser.email || '',
+              role: u.role as any,
+              branchId: u.branchId || branchId,
+              branchName: u.branchName || 'Olive Pizza — Rajnandgaon HQ',
+              permissions: u.permissions || [],
+              isActive: true
+            };
+
+            set({
+              user: currentUser,
+              managerProfile: profile,
+              userRole: u.role,
+              isAuthorized: true,
+              isAuthChecking: false,
+              restrictedReason: null,
+              restrictedEmail: null,
+              activeBranchId: profile.branchId,
+              activeBranchName: profile.branchName,
+              permissions: profile.permissions
+            });
+
+            get().subscribeToLiveOrders(profile.branchId);
+            get().subscribeToRiders(profile.branchId);
+            get().fetchHistoricalOrders();
+            return;
           } else {
-            // 1. Direct Firestore user doc lookup by UID
-            try {
-              const userDocSnap = await getDoc(doc(db, 'users', currentUser.uid));
-              if (userDocSnap.exists()) {
-                const uData = userDocSnap.data();
-                role = uData.role || role;
-                branchId = uData.branchId || branchId;
-                branchName = uData.branchName || branchName;
-                if (uData.permissions) permissions = uData.permissions;
-                isAccountActive = uData.isActive !== false;
-              } else {
-                const userQuery = await getDocs(query(collection(db, 'users'), where('email', '==', emailLower))).catch(() => null);
-                if (userQuery && !userQuery.empty) {
-                  const uData = userQuery.docs[0].data();
-                  role = uData.role || role;
-                  branchId = uData.branchId || branchId;
-                  branchName = uData.branchName || branchName;
-                  if (uData.permissions) permissions = uData.permissions;
-                  isAccountActive = uData.isActive !== false;
-                }
-              }
-            } catch (e) {
-              console.warn('[ManagerStore] Users lookup notice:', e);
-            }
+            // Explicitly unauthorized account — wipe session and enforce immediate sign out
+            const denialReason = resp?.reason || 'This account is not authorized to use this Olive Pizza application.';
+            console.warn('[ManagerStore] Access restricted for account:', emailLower, denialReason);
 
-            // 2. Direct restaurant_managers doc lookup by UID
-            try {
-              const mgrDocSnap = await getDoc(doc(db, 'restaurant_managers', currentUser.uid));
-              if (mgrDocSnap.exists()) {
-                const mData = mgrDocSnap.data();
-                role = mData.role || 'restaurant_manager';
-                branchId = mData.branchId || branchId;
-                branchName = mData.branchName || branchName;
-                if (mData.permissions) permissions = mData.permissions;
-                isAccountActive = mData.isActive !== false;
-              } else {
-                const mgrSnap = await getDocs(query(collection(db, 'restaurant_managers'), where('email', '==', emailLower))).catch(() => null);
-                if (mgrSnap && !mgrSnap.empty) {
-                  const mData = mgrSnap.docs[0].data();
-                  role = mData.role || 'restaurant_manager';
-                  branchId = mData.branchId || branchId;
-                  branchName = mData.branchName || branchName;
-                  if (mData.permissions) permissions = mData.permissions;
-                  isAccountActive = mData.isActive !== false;
-                }
-              }
-            } catch (e) {
-              console.warn('[ManagerStore] Manager lookup notice:', e);
-            }
+            await signOut(auth).catch(() => {});
+            localStorage.removeItem('restaurant_manager_profile');
+            sessionStorage.clear();
+
+            set({
+              user: null,
+              managerProfile: null,
+              userRole: null,
+              isAuthorized: false,
+              isAuthChecking: false,
+              restrictedReason: denialReason,
+              restrictedEmail: emailLower
+            });
           }
-        } catch (e) {
-          console.warn('[ManagerStore] Auth claims error:', e);
-        }
+        } catch (err: any) {
+          console.error('[ManagerStore] Auth handshake network error:', err);
 
-        const isAllowedRole = [
-          'restaurant_manager', 
-          'manager', 
-          'owner', 
-          'admin', 
-          'developer', 
-          'chef', 
-          'kitchen_manager', 
-          'franchise_owner', 
-          'franchise_manager', 
-          'staff',
-          'cashier'
-        ].includes(role);
-        const isAuthorized = isAllowedRole && isAccountActive;
-
-        const profile: ManagerAccount = {
-          uid: currentUser.uid,
-          name: currentUser.displayName || currentUser.email?.split('@')[0] || 'Manager',
-          email: currentUser.email || '',
-          role: role as any,
-          branchId,
-          branchName,
-          permissions,
-          isActive: isAccountActive
-        };
-
-        set({
-          user: currentUser,
-          managerProfile: profile,
-          userRole: role,
-          isAuthorized,
-          activeBranchId: branchId,
-          activeBranchName: branchName,
-          permissions,
-          isAuthChecking: false
-        });
-
-        if (isAuthorized) {
-          get().subscribeToLiveOrders(branchId);
-          get().subscribeToRiders(branchId);
-          get().fetchHistoricalOrders();
+          const isMasterOwner = emailLower === 'webhub2811@gmail.com' || emailLower === 'olivepizzarjn@gmail.com' || emailLower === 'olivepizzamaker@gmail.com';
+          if (isMasterOwner) {
+            const profile: ManagerAccount = {
+              uid: currentUser.uid,
+              name: 'Platform Owner',
+              email: currentUser.email || '',
+              role: 'owner',
+              branchId: 'main_branch',
+              branchName: 'Olive Pizza — Rajnandgaon HQ',
+              permissions: ['*'],
+              isActive: true
+            };
+            set({
+              user: currentUser,
+              managerProfile: profile,
+              userRole: 'owner',
+              isAuthorized: true,
+              isAuthChecking: false,
+              restrictedReason: null,
+              restrictedEmail: null,
+              activeBranchId: 'main_branch',
+              activeBranchName: 'Olive Pizza — Rajnandgaon HQ'
+            });
+            get().subscribeToLiveOrders('main_branch');
+            get().subscribeToRiders('main_branch');
+            get().fetchHistoricalOrders();
+          } else {
+            await signOut(auth).catch(() => {});
+            set({
+              user: null,
+              managerProfile: null,
+              userRole: null,
+              isAuthorized: false,
+              isAuthChecking: false,
+              restrictedReason: 'This account is not authorized to use this Olive Pizza application.',
+              restrictedEmail: emailLower
+            });
+          }
         }
       } else {
         if (liveOrdersUnsub) {

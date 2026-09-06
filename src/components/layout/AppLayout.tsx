@@ -7,7 +7,7 @@ import { AccessDeniedPage } from '../../pages/AccessDeniedPage';
 import { Pizza } from 'lucide-react';
 
 export const AppLayout: React.FC = () => {
-  const { user, isAuthChecking, isAuthorized } = useManagerStore();
+  const { user, isAuthChecking, isAuthorized, restrictedReason } = useManagerStore();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   if (isAuthChecking) {
@@ -22,6 +22,10 @@ export const AppLayout: React.FC = () => {
         </p>
       </div>
     );
+  }
+
+  if (restrictedReason) {
+    return <AccessDeniedPage />;
   }
 
   // Not logged in -> Render login

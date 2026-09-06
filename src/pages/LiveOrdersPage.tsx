@@ -243,6 +243,38 @@ export const LiveOrdersPage: React.FC = () => {
                       </span>
                     </div>
                   </div>
+
+                  {/* Preparation countdown banner if preparing */}
+                  {isPreparing && (
+                    <div className="mb-3 p-2.5 rounded-xl bg-[#0d120f] border border-[#26332a] flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-1.5 text-[#a4c29c]">
+                        <Clock className="w-3.5 h-3.5 text-[#c6a052] animate-pulse" />
+                        <span>Kitchen Prep:</span>
+                      </div>
+                      {(() => {
+                        const targetMs = order.expectedReadyAt ? new Date(order.expectedReadyAt).getTime() : NaN;
+                        if (!isNaN(targetMs)) {
+                          const diffMin = Math.round((targetMs - Date.now()) / (60 * 1000));
+                          const isOverdue = diffMin < 0;
+                          const text = diffMin > 0 ? `~${diffMin} mins left` : diffMin === 0 ? 'Ready any second' : `Overdue by ${Math.abs(diffMin)}m`;
+                          return (
+                            <span className={`px-2 py-0.5 rounded font-mono text-[11px] font-bold ${
+                              isOverdue 
+                                ? 'bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse' 
+                                : 'bg-[#c6a052]/20 text-[#c6a052] border border-[#c6a052]/30'
+                            }`}>
+                              {text}
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="px-2 py-0.5 rounded font-mono text-[11px] font-bold bg-[#c6a052]/20 text-[#c6a052] border border-[#c6a052]/30">
+                            {order.estimatedPreparationMinutes || 20}m target
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
 
                 {/* Status Action Buttons */}
