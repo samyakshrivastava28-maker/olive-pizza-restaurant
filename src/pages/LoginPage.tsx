@@ -8,7 +8,6 @@ import {
 } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import { Capacitor } from '@capacitor/core';
-import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Mail, Lock, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 import { AppLogo } from '../components/common/AppLogo';
@@ -52,6 +51,7 @@ export const LoginPage: React.FC = () => {
     setError(null);
     try {
       if (Capacitor.isNativePlatform()) {
+        const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
         const res = await FirebaseAuthentication.signInWithGoogle();
         const idToken = res.credential?.idToken;
         if (!idToken) throw new Error('Failed to get Google ID token on mobile device.');

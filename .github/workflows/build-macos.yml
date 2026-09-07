@@ -3,6 +3,8 @@ name: Build macOS — Restaurant
 on:
   push:
     branches: [main]
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -40,7 +42,7 @@ jobs:
         id: create_unified_release
         continue-on-error: true
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
+        if: startsWith(github.ref, 'refs/tags/v')
         with:
           name: "Olive Pizza Restaurant — Latest Release (All Platforms)"
           tag_name: "latest"
@@ -56,7 +58,7 @@ jobs:
         id: create_release
         continue-on-error: true
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
+        if: startsWith(github.ref, 'refs/tags/v')
         with:
           name: "Olive Pizza Restaurant Manager macOS v1.0.${{ github.run_number }}"
           tag_name: "v1.0.${{ github.run_number }}-mac"
