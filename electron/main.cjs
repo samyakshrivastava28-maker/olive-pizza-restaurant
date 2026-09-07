@@ -31,6 +31,42 @@ function createWindow() {
   const currentUserAgent = mainWindow.webContents.getUserAgent();
   mainWindow.webContents.setUserAgent(currentUserAgent.replace(/Electron\/[0-9\.]+\s/g, ''));
 
+  // Network interceptors for Restaurant & Kitchen backend communication
+  const sess = mainWindow.webContents.session;
+  const BACKEND_URL = 'https://olivepizza-owner.onrender.com';
+  const PLATFORM_ORIGIN = 'https://manager.olivepizza.in';
+
+  sess.webRequest.onBeforeRequest((details, callback) => {
+    const url = details.url;
+    if (url.startsWith('file:///api/') || url === 'file:///api') {
+      return callback({ redirectURL: url.replace('file:///api', `${BACKEND_URL}/api`) });
+    }
+    if (url.startsWith('file:///restaurant/') || url === 'file:///restaurant') {
+      return callback({ redirectURL: url.replace('file:///restaurant', `${BACKEND_URL}/restaurant`) });
+    }
+    if (url.startsWith('file:///health') || url === 'file:///health') {
+      return callback({ redirectURL: url.replace('file:///health', `${BACKEND_URL}/health`) });
+    }
+    callback({});
+  });
+
+  sess.webRequest.onBeforeSendHeaders((details, callback) => {
+    const requestHeaders = { ...details.requestHeaders };
+    if (!requestHeaders['Origin'] || requestHeaders['Origin'] === 'null' || requestHeaders['Origin'].startsWith('file://')) {
+      requestHeaders['Origin'] = PLATFORM_ORIGIN;
+    }
+    callback({ cancel: false, requestHeaders });
+  });
+
+  sess.webRequest.onHeadersReceived((details, callback) => {
+    const responseHeaders = { ...details.responseHeaders };
+    responseHeaders['access-control-allow-origin'] = ['*'];
+    responseHeaders['access-control-allow-credentials'] = ['true'];
+    responseHeaders['access-control-allow-methods'] = ['GET, POST, PUT, DELETE, PATCH, OPTIONS'];
+    responseHeaders['access-control-allow-headers'] = ['*'];
+    callback({ cancel: false, responseHeaders });
+  });
+
   // Handle popups: allow Google OAuth / Firebase auth popups inside Electron
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     const isAuthUrl = 
@@ -49,7 +85,8 @@ function createWindow() {
           webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            sandbox: false
+            sandbox: false,
+            webSecurity: false
           }
         }
       };
