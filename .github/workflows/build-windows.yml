@@ -46,6 +46,7 @@ jobs:
           name: "Olive Pizza Restaurant — Latest Release (All Platforms)"
           tag_name: "latest"
           files: dist-electron/*.exe
+          clobber: true
           draft: false
           prerelease: false
           make_latest: true
