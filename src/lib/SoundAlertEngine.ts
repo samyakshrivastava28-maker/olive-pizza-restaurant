@@ -1,4 +1,4 @@
-﻿/**
+/**
  * SoundAlertEngine.ts
  *
  * Centralized, production-grade audio and alarm system.
@@ -107,6 +107,19 @@ export class SoundAlertEngine {
     }
   }
 
+  private static playAudioFile(filePath: string): boolean {
+    const settings = this.getSettings();
+    if (settings.muted) return false;
+    try {
+      const audio = new Audio(filePath);
+      audio.volume = settings.volume;
+      audio.play().catch(() => {});
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Play a one-shot notification chime.
    */
@@ -114,6 +127,8 @@ export class SoundAlertEngine {
     this.unlockAudio();
     switch (type) {
       case 'new_order':
+        // Try file playback first, fallback to synthesized tones
+        this.playAudioFile('/sounds/order_alert.mp3');
         // High-importance commanding 4-tone sequence: A5 -> D6 -> A5 -> D6
         this.playTone(880, 0.22, 'triangle', 0.9, 0);
         this.playTone(1174, 0.22, 'sine', 0.9, 0.14);
@@ -122,40 +137,53 @@ export class SoundAlertEngine {
         break;
 
       case 'delivery_urgent':
-        // Fast dual-tone chime
+        this.playAudioFile('/sounds/system_alert.mp3');
         this.playTone(987, 0.18, 'sine', 0.85, 0);
         this.playTone(1318, 0.28, 'sine', 0.95, 0.12);
         break;
 
       case 'order_accepted':
+        this.playAudioFile('/sounds/order_confirmed.mp3');
         this.playTone(659, 0.2, 'sine', 0.5, 0);
         this.playTone(880, 0.3, 'sine', 0.6, 0.15);
         break;
 
       case 'order_ready':
+        this.playAudioFile('/sounds/success_ding.mp3');
         this.playTone(1046, 0.35, 'sine', 0.7, 0);
         break;
 
       case 'order_cancelled':
+        this.playAudioFile('/sounds/cancel_buzz.mp3');
         this.playTone(440, 0.25, 'sawtooth', 0.6, 0);
         this.playTone(330, 0.45, 'sine', 0.7, 0.2);
         break;
 
       case 'order_delivered':
+        this.playAudioFile('/sounds/delivery_chime.mp3');
         this.playTone(784, 0.15, 'sine', 0.6, 0);
         this.playTone(987, 0.15, 'sine', 0.6, 0.12);
         this.playTone(1174, 0.3, 'sine', 0.7, 0.24);
         break;
 
       case 'soft_pop':
+        this.playAudioFile('/sounds/soft_pop.mp3');
         this.playTone(880, 0.1, 'sine', 0.3, 0);
         break;
 
       case 'test':
+        this.playAudioFile('/sounds/success_ding.mp3');
         this.playTone(880, 0.15, 'sine', 0.6, 0);
         this.playTone(1174, 0.25, 'triangle', 0.7, 0.12);
         break;
     }
+  }
+
+  /**
+   * Play the distinct delivered sound once.
+   */
+  static playOrderDelivered(): void {
+    this.playSound('order_delivered');
   }
 
   /**

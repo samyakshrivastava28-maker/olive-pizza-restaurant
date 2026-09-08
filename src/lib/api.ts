@@ -10,6 +10,15 @@ export function getApiBaseUrl(): string {
   if (import.meta.env.VITE_BACKEND_URL) {
     return import.meta.env.VITE_BACKEND_URL;
   }
+  if (
+    import.meta.env.DEV &&
+    typeof window !== 'undefined' &&
+    window.location.protocol !== 'file:' &&
+    window.location.protocol !== 'capacitor:' &&
+    !navigator.userAgent.includes('Electron')
+  ) {
+    return "";
+  }
   return PRODUCTION_BACKEND_URL;
 }
 
@@ -70,19 +79,16 @@ export async function fetchApi<T = any>(endpoint: string, options: RequestInit =
       } catch {}
     }
 
-    if (res.status === 401) {
-      return { success: false, error: 'Authentication expired or invalid. Please sign in again.' };
-    }
-
-    if (res.status === 403) {
-      return { success: false, error: 'Unauthorized. You do not have permission to manage restaurant operations.' };
-    }
-
     const json = await res.json().catch(() => null);
+
+    if (res.status === 401) {
+      return { success: false, error: json?.error || 'Authentication expired or invalid. Please sign in again.' };
+    }
+
     if (!res.ok) {
       return {
         success: false,
-        error: json?.error || json?.message || `Server returned error (${res.status})`
+        error: json?.error || json?.message || (res.status === 403 ? 'Unauthorized: You do not have permission for this restaurant action.' : `Server returned error (${res.status})`)
       };
     }
 

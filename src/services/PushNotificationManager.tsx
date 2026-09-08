@@ -23,9 +23,27 @@ export default function PushNotificationManager() {
     if (!Capacitor.isNativePlatform()) return;
     try {
       await PushNotifications.createChannel({
-        id: 'olive_order_new',
-        name: 'New Orders',
+        id: 'olive_order_new_v2',
+        name: 'New Orders Alarm (v2)',
         description: 'Critical incoming order alerts. Wakes device and sounds kitchen alarm.',
+        importance: 5,
+        visibility: 1,
+        vibration: true,
+        sound: 'new_order',
+      });
+      await PushNotifications.createChannel({
+        id: 'olive_order_completed_v2',
+        name: 'Order Delivered / Completed (v2)',
+        description: 'Delivered and completed order notifications.',
+        importance: 4,
+        visibility: 1,
+        vibration: true,
+        sound: 'order_delivered',
+      });
+      await PushNotifications.createChannel({
+        id: 'olive_order_new',
+        name: 'New Orders (Legacy)',
+        description: 'Critical incoming order alerts.',
         importance: 5,
         visibility: 1,
         vibration: true,
@@ -241,12 +259,12 @@ export default function PushNotificationManager() {
     SoundAlertEngine.stopAlarm();
     setNewOrderAlert(null);
     try {
-      const ok = await updateOrderStatus(orderId, 'accepted');
-      if (ok) {
+      const res = await updateOrderStatus(orderId, 'accepted');
+      if (res && res.success) {
         SoundAlertEngine.playSound('order_accepted');
         toast.success('Order accepted! Sent to Kitchen KDS.');
       } else {
-        toast.error('Failed to accept order.');
+        toast.error(res?.error || 'Failed to accept order.');
       }
     } catch {
       toast.error('Failed to accept order.');

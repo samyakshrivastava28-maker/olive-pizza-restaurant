@@ -14,6 +14,7 @@ import {
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
 import { fetchApi } from '../lib/api';
+import { SoundAlertEngine } from '../lib/SoundAlertEngine';
 import type { 
   Order, 
   OrderStatus, 
@@ -71,7 +72,7 @@ interface ManagerState {
   subscribeToRestaurantStatus: (branchId: string) => () => void;
   toggleRestaurantStatus: (isOpen: boolean, reason?: string) => Promise<boolean>;
   fetchHistoricalOrders: (params?: { search?: string; status?: string; fulfillment?: string; dateRange?: string }) => Promise<void>;
-  updateOrderStatus: (orderId: string, nextStatus: OrderStatus, reason?: string) => Promise<boolean>;
+  updateOrderStatus: (orderId: string, nextStatus: OrderStatus, reason?: string) => Promise<{ success: boolean; error?: string }>;
   subscribeToRiders: (branchId: string) => () => void;
   sendNotification: (payload: { title: string; message: string; targetAudience: 'customers' | 'staff' | 'delivery' | 'all'; imageUrl?: string; deepLink?: string }) => Promise<boolean>;
   fetchNotificationHistory: () => Promise<void>;
@@ -370,9 +371,8 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
                 status,
                 fulfillmentType: data.fulfillmentType || data.deliveryType || (data.tableNumber ? 'dine_in' : 'delivery'),
                 deliveryType: data.deliveryType || (data.tableNumber ? 'dine_in' : 'delivery'),
-                orderSource: data.orderSource || 'website',
-                paymentStatus: data.paymentStatus || 'PAID',
-                paymentMethod: data.paymentMethod || 'CASH',
+                paymentStatus: data.paymentStatus || 'pending',
+                paymentMethod: data.paymentMethod || 'cash',
                 tableNumber: data.tableNumber,
                 deliveryPartnerId: data.deliveryPartnerId,
                 deliveryPartnerName: data.deliveryPartnerName,
@@ -380,6 +380,15 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
                 deliveryPartnerLocation: data.deliveryPartnerLocation,
                 cancellationReason: data.cancellationReason,
                 branchId: orderBranch,
+                acceptedAt: data.acceptedAt,
+                preparingAt: data.preparingAt,
+                readyAt: data.readyAt,
+                partnerAssignedAt: data.partnerAssignedAt,
+                pickedUpAt: data.pickedUpAt,
+                outForDeliveryAt: data.outForDeliveryAt,
+                deliveredAt: data.deliveredAt,
+                cancelledAt: data.cancelledAt,
+                appliedCouponCode: data.appliedCouponCode || data.couponCode,
                 createdAt: createdDate,
                 updatedAt: updatedDate,
               });
@@ -387,9 +396,28 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
           }
         });
 
+        // Detect modified orders that became 'delivered' to play single-shot chime
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'modified') {
+            const data = change.doc.data();
+            const s = (data.status || '').toLowerCase();
+            if (s === 'delivered') {
+              SoundAlertEngine.playOrderDelivered();
+            }
+          }
+        });
+
         // Safe in-memory chronological sort
         activeList.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
         set({ liveOrders: activeList, isOrdersLoading: false });
+
+        // Continuous sound alarm: loop while there are unaccepted/pending orders
+        const pendingCount = activeList.filter((o) => o.status === 'pending' || o.status === 'pending_acceptance').length;
+        if (pendingCount > 0) {
+          SoundAlertEngine.startContinuousAlarm('new_order');
+        } else {
+          SoundAlertEngine.stopAlarm();
+        }
       }, async (err) => {
         console.warn('[ManagerStore] Orders listener fallback to backend API:', err);
         // Fallback to backend live orders endpoint
@@ -408,6 +436,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
     }
 
     return () => {
+      SoundAlertEngine.stopAlarm();
       if (liveOrdersUnsub) liveOrdersUnsub();
     };
   },
@@ -453,6 +482,15 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
             deliveryPartnerName: data.deliveryPartnerName,
             cancellationReason: data.cancellationReason,
             branchId: orderBranch,
+            acceptedAt: data.acceptedAt,
+            preparingAt: data.preparingAt,
+            readyAt: data.readyAt,
+            partnerAssignedAt: data.partnerAssignedAt,
+            pickedUpAt: data.pickedUpAt,
+            outForDeliveryAt: data.outForDeliveryAt,
+            deliveredAt: data.deliveredAt,
+            cancelledAt: data.cancelledAt,
+            appliedCouponCode: data.appliedCouponCode || data.couponCode,
             createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt || Date.now()),
             updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt || Date.now()),
           });
@@ -486,22 +524,36 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
 
       if (res.success || res.status) {
         // Optimistic local update
-        set((state) => ({
-          liveOrders: state.liveOrders.map((o) => 
+        set((state) => {
+          const updatedLive = state.liveOrders.map((o) => 
             o.id === orderId ? { ...o, status: nextStatus, cancellationReason: reason } : o
-          ).filter((o) => ACTIVE_ORDER_STATUSES.includes(nextStatus) || o.id !== orderId),
-          isActionLoading: false
-        }));
+          ).filter((o) => ACTIVE_ORDER_STATUSES.includes(nextStatus) || o.id !== orderId);
+
+          const remainingPending = updatedLive.filter((o) => o.status === 'pending' || o.status === 'pending_acceptance').length;
+          if (remainingPending === 0) {
+            SoundAlertEngine.stopAlarm();
+          }
+
+          return {
+            liveOrders: updatedLive,
+            isActionLoading: false
+          };
+        });
+
+        if (nextStatus === 'delivered') {
+          SoundAlertEngine.playOrderDelivered();
+        }
+
         get().fetchHistoricalOrders();
-        return true;
+        return { success: true };
       } else {
         set({ isActionLoading: false });
-        return false;
+        return { success: false, error: res.error || 'Failed to update order status' };
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('[ManagerStore] Error updating order status:', err);
       set({ isActionLoading: false });
-      return false;
+      return { success: false, error: err?.message || 'Failed to update order status' };
     }
   },
 

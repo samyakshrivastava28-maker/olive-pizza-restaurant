@@ -12,7 +12,10 @@ import {
   BellRing, 
   Eye, 
   Search, 
-  AlertCircle
+  AlertCircle,
+  ShieldCheck,
+  CreditCard,
+  Calendar
 } from 'lucide-react';
 import { useManagerStore } from '../store/managerStore';
 import type { Order, OrderStatus } from '../types/restaurant';
@@ -35,15 +38,18 @@ export const LiveOrdersPage: React.FC = () => {
   const [rejectOrderId, setRejectOrderId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
+  // Filter orders by search & tab
   const filteredOrders = liveOrders.filter((order) => {
-    const matchesSearch = 
-      (order.orderNumber || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (order.customerName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (order.contactPhone || '').includes(searchQuery);
+    // Search query filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchNumber = (order.orderNumber || '').toLowerCase().includes(q) || String(order.dailyOrderNumber || '').includes(q);
+      const matchCustomer = (order.customerName || '').toLowerCase().includes(q);
+      const matchPhone = (order.contactPhone || '').toLowerCase().includes(q);
+      if (!matchNumber && !matchCustomer && !matchPhone) return false;
+    }
 
-    if (!matchesSearch) return false;
-
-    if (selectedStatusTab === 'all') return true;
+    // Status tabs filter
     if (selectedStatusTab === 'pending') return order.status === 'pending' || order.status === 'pending_acceptance';
     if (selectedStatusTab === 'preparing') return order.status === 'preparing' || order.status === 'accepted';
     if (selectedStatusTab === 'ready') return order.status === 'ready';
@@ -52,26 +58,26 @@ export const LiveOrdersPage: React.FC = () => {
   });
 
   const handleStatusChange = async (orderId: string, nextStatus: OrderStatus) => {
-    const success = await updateOrderStatus(orderId, nextStatus);
-    if (success) {
+    const res = await updateOrderStatus(orderId, nextStatus);
+    if (res && res.success) {
       toast.success(`Order moved to ${nextStatus.toUpperCase().replace(/_/g, ' ')}`);
       if (selectedOrderDetails?.id === orderId) {
         setSelectedOrderDetails(null);
       }
     } else {
-      toast.error('Failed to update order status');
+      toast.error(res?.error || 'Failed to update order status');
     }
   };
 
   const handleConfirmReject = async () => {
     if (!rejectOrderId) return;
-    const success = await updateOrderStatus(rejectOrderId, 'cancelled', rejectReason.trim() || 'Rejected by restaurant manager');
-    if (success) {
+    const res = await updateOrderStatus(rejectOrderId, 'cancelled', rejectReason.trim() || 'Rejected by restaurant manager');
+    if (res && res.success) {
       toast.success('Order cancelled/rejected');
       setRejectOrderId(null);
       setRejectReason('');
     } else {
-      toast.error('Failed to reject order');
+      toast.error(res?.error || 'Failed to reject order');
     }
   };
 
@@ -377,61 +383,251 @@ export const LiveOrdersPage: React.FC = () => {
 
       {/* Order Details Modal */}
       {selectedOrderDetails && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
-          <div className="bg-[#141b16] border border-[#26332a] w-full max-w-lg rounded-2xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-[#26332a]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#141b16] border border-[#26332a] w-full max-w-2xl rounded-2xl p-6 shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-start justify-between pb-4 border-b border-[#26332a]">
               <div>
-                <h3 className="text-base font-extrabold text-white font-mono">
-                  {selectedOrderDetails.orderNumber || `#${selectedOrderDetails.id.slice(0, 6).toUpperCase()}`}
-                </h3>
-                <span className="text-xs text-[#a4c29c]">
-                  {selectedOrderDetails.createdAt ? format(new Date(selectedOrderDetails.createdAt), 'dd MMM yyyy, HH:mm:ss') : ''}
-                </span>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-extrabold text-white font-mono">
+                    {selectedOrderDetails.orderNumber || `#${selectedOrderDetails.id.slice(0, 6).toUpperCase()}`}
+                  </h3>
+                  {selectedOrderDetails.dailyOrderNumber && (
+                    <span className="text-xs font-bold px-2 py-0.5 rounded bg-[#c6a052]/20 text-[#c6a052] font-mono">
+                      #{selectedOrderDetails.dailyOrderNumber}
+                    </span>
+                  )}
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                    selectedOrderDetails.status === 'delivered' ? 'bg-[#10b981]/20 text-[#10b981] border border-[#10b981]/30' :
+                    selectedOrderDetails.status === 'cancelled' || selectedOrderDetails.status === 'rejected' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                    selectedOrderDetails.status === 'ready' ? 'bg-[#c6a052]/20 text-[#c6a052] border border-[#c6a052]/30' :
+                    'bg-[#57854d]/20 text-[#a4c29c] border border-[#57854d]/30'
+                  }`}>
+                    {selectedOrderDetails.status.replace(/_/g, ' ')}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-[#a4c29c] mt-1">
+                  <Calendar className="w-3.5 h-3.5 text-[#7ba372]" />
+                  <span>{selectedOrderDetails.createdAt ? format(new Date(selectedOrderDetails.createdAt), 'dd MMMM yyyy, hh:mm:ss a') : 'Recently'}</span>
+                </div>
               </div>
               <button
                 onClick={() => setSelectedOrderDetails(null)}
-                className="p-1 rounded-lg text-[#7ba372] hover:text-white hover:bg-[#1b241e]"
+                className="p-1.5 rounded-xl text-[#7ba372] hover:text-white hover:bg-[#1b241e] transition-all"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Customer info */}
-            <div className="p-3.5 rounded-xl bg-[#0d120f] border border-[#26332a] text-xs space-y-1">
-              <strong className="text-white block">{selectedOrderDetails.customerName || 'Customer'}</strong>
-              <p className="text-[#a4c29c]">Phone: {selectedOrderDetails.contactPhone || 'N/A'}</p>
-              {selectedOrderDetails.deliveryAddress && (
-                <p className="text-[#7ba372]">
-                  Address: {typeof selectedOrderDetails.deliveryAddress === 'object' ? selectedOrderDetails.deliveryAddress.addressLine : selectedOrderDetails.deliveryAddress}
-                </p>
-              )}
+            {/* Customer & Fulfillment Info */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="p-3.5 rounded-xl bg-[#0d120f] border border-[#26332a] space-y-1.5 text-xs">
+                <span className="text-[10px] font-bold text-[#7ba372] uppercase tracking-wider block">Customer Details</span>
+                <strong className="text-white text-sm block">{selectedOrderDetails.customerName || 'Customer'}</strong>
+                {selectedOrderDetails.contactPhone && (
+                  <div className="flex items-center gap-1.5 text-[#a4c29c]">
+                    <Phone className="w-3.5 h-3.5 text-[#7ba372]" />
+                    <a href={`tel:${selectedOrderDetails.contactPhone}`} className="hover:text-[#c6a052] font-mono">
+                      {selectedOrderDetails.contactPhone}
+                    </a>
+                  </div>
+                )}
+                {selectedOrderDetails.customerEmail && (
+                  <p className="text-[#a4c29c] truncate">{selectedOrderDetails.customerEmail}</p>
+                )}
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-[#0d120f] border border-[#26332a] space-y-1.5 text-xs">
+                <span className="text-[10px] font-bold text-[#7ba372] uppercase tracking-wider block">Fulfillment & Destination</span>
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-[#57854d]/20 text-[#a4c29c] border border-[#57854d]/30">
+                    {selectedOrderDetails.fulfillmentType || selectedOrderDetails.deliveryType || 'Delivery'}
+                  </span>
+                  {selectedOrderDetails.tableNumber && (
+                    <span className="text-white font-bold font-mono">Table #{selectedOrderDetails.tableNumber}</span>
+                  )}
+                </div>
+                {selectedOrderDetails.deliveryAddress && (
+                  <div className="flex items-start gap-1.5 text-[#a4c29c] pt-1">
+                    <MapPin className="w-3.5 h-3.5 text-[#7ba372] shrink-0 mt-0.5" />
+                    <span className="text-[11px] leading-relaxed">
+                      {typeof selectedOrderDetails.deliveryAddress === 'object' 
+                        ? [selectedOrderDetails.deliveryAddress.addressLine, selectedOrderDetails.deliveryAddress.city, selectedOrderDetails.deliveryAddress.pincode].filter(Boolean).join(', ')
+                        : selectedOrderDetails.deliveryAddress}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Items list */}
-            <div className="space-y-2 text-xs">
-              <span className="font-bold text-white block">Order Items Snapshot:</span>
-              <div className="p-3.5 rounded-xl bg-[#0d120f] border border-[#26332a] space-y-2">
+            {/* Items Breakdown */}
+            <div className="space-y-2">
+              <span className="text-xs font-bold text-white block">Itemized Kitchen Breakdown:</span>
+              <div className="p-3.5 rounded-xl bg-[#0d120f] border border-[#26332a] divide-y divide-[#26332a]/60 space-y-2.5">
                 {selectedOrderDetails.items.map((it, i) => (
-                  <div key={i} className="flex justify-between items-start text-[#e8eee9]">
-                    <div>
-                      <span className="font-bold text-white">{it.quantity}x {it.name}</span>
-                      {it.variant && <span className="text-[11px] text-[#a4c29c] block font-mono">({it.variant})</span>}
+                  <div key={i} className={i > 0 ? 'pt-2.5 flex justify-between items-start text-xs' : 'flex justify-between items-start text-xs'}>
+                    <div className="space-y-1">
+                      <div className="font-bold text-white text-sm">
+                        <span className="text-[#c6a052] font-mono">{it.quantity}x</span> {it.name}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 text-[11px]">
+                        {(it.variant || it.size) && (
+                          <span className="px-1.5 py-0.5 rounded bg-[#1b241e] text-[#a4c29c] border border-[#26332a]">
+                            Size: {it.variant || it.size}
+                          </span>
+                        )}
+                        {it.crust && (
+                          <span className="px-1.5 py-0.5 rounded bg-[#1b241e] text-[#a4c29c] border border-[#26332a]">
+                            Crust: {it.crust}
+                          </span>
+                        )}
+                      </div>
+                      {it.addons && it.addons.length > 0 && (
+                        <div className="text-[11px] text-[#7ba372]">
+                          + {it.addons.map((a) => `${a.name} (₹${a.price})`).join(', ')}
+                        </div>
+                      )}
                     </div>
-                    <span className="font-mono text-[#c6a052]">₹{(it.price * it.quantity).toFixed(0)}</span>
+                    <div className="text-right">
+                      <span className="font-mono text-white font-bold">₹{(it.price * it.quantity).toFixed(0)}</span>
+                      <span className="block text-[10px] text-[#7ba372] font-mono">₹{it.price} each</span>
+                    </div>
                   </div>
                 ))}
+              </div>
+            </div>
 
-                <div className="pt-2 border-t border-[#26332a] flex justify-between font-extrabold text-sm text-white">
-                  <span>Total Bill:</span>
-                  <span className="text-[#c6a052] font-mono">₹{selectedOrderDetails.totalAmount}</span>
+            {/* Financial Summary & Verified Payment Status */}
+            <div className="p-4 rounded-xl bg-[#0d120f] border border-[#26332a] space-y-2 text-xs">
+              <div className="flex justify-between text-[#a4c29c]">
+                <span>Items Subtotal:</span>
+                <span className="font-mono text-white">₹{selectedOrderDetails.subtotal || selectedOrderDetails.totalAmount}</span>
+              </div>
+              {Number(selectedOrderDetails.deliveryFee || 0) > 0 && (
+                <div className="flex justify-between text-[#a4c29c]">
+                  <span>Delivery Fee:</span>
+                  <span className="font-mono text-white">₹{selectedOrderDetails.deliveryFee}</span>
+                </div>
+              )}
+              {Number(selectedOrderDetails.taxes || 0) > 0 && (
+                <div className="flex justify-between text-[#a4c29c]">
+                  <span>Taxes (GST):</span>
+                  <span className="font-mono text-white">₹{selectedOrderDetails.taxes}</span>
+                </div>
+              )}
+              {Number(selectedOrderDetails.packagingCharge || 0) > 0 && (
+                <div className="flex justify-between text-[#a4c29c]">
+                  <span>Packaging Charge:</span>
+                  <span className="font-mono text-white">₹{selectedOrderDetails.packagingCharge}</span>
+                </div>
+              )}
+              {Number(selectedOrderDetails.discountAmount || 0) > 0 && (
+                <div className="flex justify-between text-[#10b981]">
+                  <span>Discount {selectedOrderDetails.appliedCouponCode ? `(${selectedOrderDetails.appliedCouponCode})` : ''}:</span>
+                  <span className="font-mono">-₹{selectedOrderDetails.discountAmount}</span>
+                </div>
+              )}
+              <div className="pt-2 border-t border-[#26332a] flex justify-between items-center text-sm font-extrabold text-white">
+                <span>Final Total:</span>
+                <span className="text-[#c6a052] font-mono text-base">₹{selectedOrderDetails.totalAmount}</span>
+              </div>
+
+              {/* Payment Status Bar */}
+              <div className="pt-2 flex items-center justify-between text-[11px] border-t border-[#26332a]/60">
+                <div className="flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5 text-[#7ba372]" />
+                  <span className="text-[#a4c29c]">Payment Method:</span>
+                  <strong className="text-white uppercase font-mono">{selectedOrderDetails.paymentMethod || 'COD'}</strong>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-[#10b981]" />
+                  <span className="text-[#a4c29c]">Status:</span>
+                  <span className={`font-bold uppercase px-2 py-0.5 rounded text-[10px] ${
+                    selectedOrderDetails.paymentStatus === 'paid' 
+                      ? 'bg-[#10b981]/20 text-[#10b981]' 
+                      : 'bg-amber-500/20 text-amber-400'
+                  }`}>
+                    {selectedOrderDetails.paymentStatus || 'Pending'}
+                  </span>
                 </div>
               </div>
             </div>
 
-            <div className="flex justify-end pt-2">
+            {/* Assigned Delivery Partner (if any) */}
+            {selectedOrderDetails.deliveryPartnerName && (
+              <div className="p-3.5 rounded-xl bg-[#0d120f] border border-[#26332a] text-xs space-y-1">
+                <span className="text-[10px] font-bold text-[#7ba372] uppercase tracking-wider block">Assigned Delivery Partner</span>
+                <div className="flex justify-between items-center">
+                  <strong className="text-white text-sm">{selectedOrderDetails.deliveryPartnerName}</strong>
+                  {selectedOrderDetails.deliveryPartnerPhone && (
+                    <a href={`tel:${selectedOrderDetails.deliveryPartnerPhone}`} className="text-[#c6a052] font-mono hover:underline">
+                      {selectedOrderDetails.deliveryPartnerPhone}
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Server-Authoritative Timestamps Timeline */}
+            <div className="p-3.5 rounded-xl bg-[#0d120f] border border-[#26332a] space-y-2 text-xs">
+              <span className="text-[10px] font-bold text-[#7ba372] uppercase tracking-wider block">Order Lifecycle Timeline</span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                {selectedOrderDetails.createdAt && (
+                  <div>
+                    <span className="text-[#7ba372] block">Placed:</span>
+                    <span className="text-white font-mono">{format(new Date(selectedOrderDetails.createdAt), 'hh:mm:ss a')}</span>
+                  </div>
+                )}
+                {selectedOrderDetails.acceptedAt && (
+                  <div>
+                    <span className="text-[#7ba372] block">Accepted:</span>
+                    <span className="text-white font-mono">{format(new Date(selectedOrderDetails.acceptedAt), 'hh:mm:ss a')}</span>
+                  </div>
+                )}
+                {selectedOrderDetails.preparingAt && (
+                  <div>
+                    <span className="text-[#7ba372] block">Baking:</span>
+                    <span className="text-white font-mono">{format(new Date(selectedOrderDetails.preparingAt), 'hh:mm:ss a')}</span>
+                  </div>
+                )}
+                {selectedOrderDetails.readyAt && (
+                  <div>
+                    <span className="text-[#7ba372] block">Food Ready:</span>
+                    <span className="text-white font-mono">{format(new Date(selectedOrderDetails.readyAt), 'hh:mm:ss a')}</span>
+                  </div>
+                )}
+                {selectedOrderDetails.partnerAssignedAt && (
+                  <div>
+                    <span className="text-[#7ba372] block">Rider Assigned:</span>
+                    <span className="text-white font-mono">{format(new Date(selectedOrderDetails.partnerAssignedAt), 'hh:mm:ss a')}</span>
+                  </div>
+                )}
+                {(selectedOrderDetails.outForDeliveryAt || selectedOrderDetails.pickedUpAt) && (
+                  <div>
+                    <span className="text-[#7ba372] block">Out for Delivery:</span>
+                    <span className="text-white font-mono">{format(new Date(selectedOrderDetails.outForDeliveryAt || selectedOrderDetails.pickedUpAt!), 'hh:mm:ss a')}</span>
+                  </div>
+                )}
+                {selectedOrderDetails.deliveredAt && (
+                  <div>
+                    <span className="text-[#10b981] block">Delivered:</span>
+                    <span className="text-white font-mono">{format(new Date(selectedOrderDetails.deliveredAt), 'hh:mm:ss a')}</span>
+                  </div>
+                )}
+                {selectedOrderDetails.cancelledAt && (
+                  <div className="col-span-2">
+                    <span className="text-red-400 block">Cancelled:</span>
+                    <span className="text-white font-mono">{format(new Date(selectedOrderDetails.cancelledAt), 'hh:mm:ss a')} ({selectedOrderDetails.cancellationReason || 'No reason specified'})</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Bottom Actions */}
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#26332a]">
               <button
                 onClick={() => setSelectedOrderDetails(null)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#1b241e] hover:bg-[#222d26] border border-[#26332a]"
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#1b241e] hover:bg-[#222d26] border border-[#26332a] transition-all"
               >
                 Close
               </button>

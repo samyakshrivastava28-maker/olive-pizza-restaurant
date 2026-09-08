@@ -88,6 +88,8 @@ export interface Order {
   pickedUpAt?: string;
   outForDeliveryAt?: string;
   deliveredAt?: string;
+  cancelledAt?: string;
+  appliedCouponCode?: string;
   branchId?: string;
   branchName?: string;
   createdAt: any;
