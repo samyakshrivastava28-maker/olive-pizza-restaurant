@@ -16,14 +16,34 @@ import { InventoryManager } from './pages/InventoryManager';
 import { MenuManagementPage } from './pages/MenuManagementPage';
 
 import PushNotificationManager from './services/PushNotificationManager';
+import { AccessDeniedPage } from './pages/AccessDeniedPage';
 
 export function App() {
-  const initAuth = useManagerStore((s) => s.initAuth);
+  const { initAuth, isAuthChecking, restrictedReason } = useManagerStore();
 
   useEffect(() => {
     const unsub = initAuth();
     return () => unsub();
   }, [initAuth]);
+
+  if (isAuthChecking) {
+    return (
+      <div className="h-screen w-screen bg-[#070b08] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-3 border-[#57854d] border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs text-[#a4c29c] font-medium">Verifying Restaurant Authorization...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (restrictedReason) {
+    return (
+      <HashRouter>
+        <AccessDeniedPage />
+      </HashRouter>
+    );
+  }
 
   return (
     <HashRouter>

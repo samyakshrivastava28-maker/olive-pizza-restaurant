@@ -55,6 +55,13 @@ export async function fetchApi<T = any>(endpoint: string, options: RequestInit =
     headers.set('Content-Type', 'application/json');
   }
 
+  if (!headers.has('X-App-Target')) {
+    headers.set('X-App-Target', 'RESTAURANT_MANAGER');
+  }
+  if (!headers.has('X-App-Source')) {
+    headers.set('X-App-Source', 'RESTAURANT_MANAGER');
+  }
+
   const token = await getCurrentAuthToken();
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`);

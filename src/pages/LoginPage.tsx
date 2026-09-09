@@ -4,13 +4,16 @@ import {
   signInWithEmailAndPassword, 
   signInWithCredential,
   GoogleAuthProvider,
-  sendPasswordResetEmail 
+  sendPasswordResetEmail,
+  signOut
 } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import { Capacitor } from '@capacitor/core';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Mail, Lock, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 import { AppLogo } from '../components/common/AppLogo';
+import { fetchApi } from '../lib/api';
+import { useManagerStore } from '../store/managerStore';
 import toast from 'react-hot-toast';
 import { requestPostLoginNotificationPermissions } from '../services/notificationPermissionService';
 
@@ -46,20 +49,109 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  const verifyAndAuthorizeManager = async (user: any): Promise<boolean> => {
+    const emailLower = (user.email || '').toLowerCase().trim();
+    const isMasterOwner = emailLower === 'webhub2811@gmail.com' || emailLower === 'olivepizzarjn@gmail.com' || emailLower === 'olivepizzamaker@gmail.com';
+
+    try {
+      const resp = await fetchApi<any>('/api/auth/authorize-app', {
+        method: 'POST',
+        body: JSON.stringify({
+          targetApp: 'RESTAURANT_MANAGER',
+          requestedBranchId: 'main_branch'
+        })
+      });
+
+      if (resp && resp.authorized) {
+        const u = resp.user;
+        useManagerStore.setState({
+          user,
+          managerProfile: {
+            uid: user.uid,
+            name: u.name || user.displayName || emailLower.split('@')[0] || 'Restaurant Manager',
+            email: user.email || '',
+            role: u.role as any,
+            branchId: u.branchId || 'main_branch',
+            branchName: u.branchName || 'Olive Pizza — Rajnandgaon HQ',
+            permissions: u.permissions || [],
+            isActive: true
+          },
+          userRole: u.role,
+          isAuthorized: true,
+          isAuthChecking: false,
+          restrictedReason: null,
+          restrictedEmail: null,
+          activeBranchId: u.branchId || 'main_branch',
+          activeBranchName: u.branchName || 'Olive Pizza — Rajnandgaon HQ',
+          permissions: u.permissions || []
+        });
+        return true;
+      } else {
+        const denialReason = resp?.reason || 'This account is not authorized to use the Olive Pizza Restaurant Management application.';
+        if (resp && !resp.authorized && !isMasterOwner) {
+          await signOut(auth).catch(() => {});
+          useManagerStore.setState({
+            user: null,
+            managerProfile: null,
+            userRole: null,
+            isAuthorized: false,
+            isAuthChecking: false,
+            restrictedReason: denialReason,
+            restrictedEmail: emailLower
+          });
+          setError(denialReason);
+          return false;
+        }
+      }
+    } catch (apiErr: any) {
+      console.warn('[LoginPage] Authorization API check notice:', apiErr);
+      if (isMasterOwner) {
+        return true;
+      }
+    }
+
+    if (!isMasterOwner) {
+      const denialReason = 'This account is not authorized to use the Olive Pizza Restaurant Management application.';
+      await signOut(auth).catch(() => {});
+      useManagerStore.setState({
+        user: null,
+        managerProfile: null,
+        userRole: null,
+        isAuthorized: false,
+        isAuthChecking: false,
+        restrictedReason: denialReason,
+        restrictedEmail: emailLower
+      });
+      setError(denialReason);
+      return false;
+    }
+
+    return true;
+  };
+
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     setError(null);
     try {
+      let user: any = null;
       if (Capacitor.isNativePlatform()) {
         const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
         const res = await FirebaseAuthentication.signInWithGoogle();
         const idToken = res.credential?.idToken;
         if (!idToken) throw new Error('Failed to get Google ID token on mobile device.');
         const credential = GoogleAuthProvider.credential(idToken);
-        await signInWithCredential(auth, credential);
+        const cred = await signInWithCredential(auth, credential);
+        user = cred.user;
       } else {
-        await signInWithPopup(auth, googleProvider);
+        const cred = await signInWithPopup(auth, googleProvider);
+        user = cred.user;
       }
+
+      const authorized = await verifyAndAuthorizeManager(user);
+      if (!authorized) {
+        return;
+      }
+
       toast.success('Signed in successfully');
       requestPostLoginNotificationPermissions().catch(() => {});
       navigate(from, { replace: true });
@@ -82,7 +174,12 @@ export const LoginPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), password);
+      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+      const authorized = await verifyAndAuthorizeManager(cred.user);
+      if (!authorized) {
+        return;
+      }
+
       toast.success('Welcome to Restaurant Management');
       requestPostLoginNotificationPermissions().catch(() => {});
       navigate(from, { replace: true });

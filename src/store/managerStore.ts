@@ -518,16 +518,21 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
 
       const res = await fetchApi(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-App-Target': 'RESTAURANT_MANAGER',
+          'X-App-Source': 'RESTAURANT_MANAGER'
+        },
         body: JSON.stringify(body)
       });
 
-      if (res.success || res.status) {
-        // Optimistic local update
+      if (res && res.success) {
+        const resolvedStatus = (res.status as OrderStatus) || nextStatus;
+        // Optimistic local update (confirmed by backend success)
         set((state) => {
           const updatedLive = state.liveOrders.map((o) => 
-            o.id === orderId ? { ...o, status: nextStatus, cancellationReason: reason } : o
-          ).filter((o) => ACTIVE_ORDER_STATUSES.includes(nextStatus) || o.id !== orderId);
+            o.id === orderId ? { ...o, status: resolvedStatus, cancellationReason: reason } : o
+          ).filter((o) => ACTIVE_ORDER_STATUSES.includes(resolvedStatus) || o.id !== orderId);
 
           const remainingPending = updatedLive.filter((o) => o.status === 'pending' || o.status === 'pending_acceptance').length;
           if (remainingPending === 0) {
@@ -540,15 +545,15 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
           };
         });
 
-        if (nextStatus === 'delivered') {
+        if (resolvedStatus === 'delivered') {
           SoundAlertEngine.playOrderDelivered();
         }
 
         get().fetchHistoricalOrders();
-        return { success: true };
+        return { success: true, status: resolvedStatus };
       } else {
         set({ isActionLoading: false });
-        return { success: false, error: res.error || 'Failed to update order status' };
+        return { success: false, error: res?.error || 'Failed to update order status' };
       }
     } catch (err: any) {
       console.error('[ManagerStore] Error updating order status:', err);
