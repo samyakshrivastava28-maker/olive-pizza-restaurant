@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { fetchApi } from '../lib/api';
 import { 
   Flame, 
   Clock, 
@@ -30,9 +32,31 @@ export const LiveOrdersPage: React.FC = () => {
     updateOrderStatus 
   } = useManagerStore();
 
+  const [searchParams] = useSearchParams();
+  const targetOrderId = searchParams.get('orderId');
+
   const [selectedStatusTab, setSelectedStatusTab] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedOrderDetails, setSelectedOrderDetails] = useState<Order | null>(null);
+
+  // Auto-focus and open order modal if navigated via notification tap (?orderId=...)
+  useEffect(() => {
+    if (!targetOrderId) return;
+    const found = liveOrders.find(
+      (o) => o.id === targetOrderId || o.orderNumber === targetOrderId || String(o.dailyOrderNumber) === targetOrderId
+    );
+    if (found) {
+      setSelectedOrderDetails(found);
+    } else {
+      fetchApi(`/api/orders/${targetOrderId}`)
+        .then((res) => {
+          if (res && res.order) {
+            setSelectedOrderDetails(res.order);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [targetOrderId, liveOrders]);
 
   // Reject modal state
   const [rejectOrderId, setRejectOrderId] = useState<string | null>(null);

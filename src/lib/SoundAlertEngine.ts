@@ -128,7 +128,7 @@ export class SoundAlertEngine {
     switch (type) {
       case 'new_order':
         // Try file playback first, fallback to synthesized tones
-        this.playAudioFile('/sounds/order_alert.mp3');
+        this.playAudioFile('/sounds/new_order.mp3');
         // High-importance commanding 4-tone sequence: A5 -> D6 -> A5 -> D6
         this.playTone(880, 0.22, 'triangle', 0.9, 0);
         this.playTone(1174, 0.22, 'sine', 0.9, 0.14);
@@ -160,7 +160,7 @@ export class SoundAlertEngine {
         break;
 
       case 'order_delivered':
-        this.playAudioFile('/sounds/delivery_chime.mp3');
+        this.playAudioFile('/sounds/order_delivered.mp3');
         this.playTone(784, 0.15, 'sine', 0.6, 0);
         this.playTone(987, 0.15, 'sine', 0.6, 0.12);
         this.playTone(1174, 0.3, 'sine', 0.7, 0.24);

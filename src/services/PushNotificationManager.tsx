@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useManagerStore } from '../store/managerStore';
 import { db } from '../lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -13,42 +14,43 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
 
 export default function PushNotificationManager() {
+  const navigate = useNavigate();
   const { user, managerProfile, activeBranchId, updateOrderStatus } = useManagerStore();
   const [showPromptBanner, setShowPromptBanner] = useState(false);
   const [newOrderAlert, setNewOrderAlert] = useState<any | null>(null);
   const isRegisteredRef = useRef(false);
+  const registeredTokenRef = useRef<string | null>(null);
 
   // Create Android Notification Channels for High-Urgency Orders
   const createChannels = useCallback(async () => {
     if (!Capacitor.isNativePlatform()) return;
     try {
+      // 1. Delete legacy channels to clear any cached silent/corrupted channel settings
+      await PushNotifications.deleteChannel({ id: 'olive_order_new' }).catch(() => {});
+
+      // 2. Urgent Incoming Order Channel (v2) -> new_order.mp3
       await PushNotifications.createChannel({
         id: 'olive_order_new_v2',
         name: 'New Orders Alarm (v2)',
         description: 'Critical incoming order alerts. Wakes device and sounds kitchen alarm.',
-        importance: 5,
-        visibility: 1,
+        importance: 5, // MAX importance (heads-up banner + audio)
+        visibility: 1, // Public on lockscreen
         vibration: true,
         sound: 'new_order',
       });
+
+      // 3. Order Delivered / Completed Channel (v2) -> order_delivered.mp3
       await PushNotifications.createChannel({
         id: 'olive_order_completed_v2',
         name: 'Order Delivered / Completed (v2)',
-        description: 'Delivered and completed order notifications.',
-        importance: 4,
+        description: 'Delivered and completed order notifications. Plays celebratory chime.',
+        importance: 4, // HIGH importance
         visibility: 1,
         vibration: true,
         sound: 'order_delivered',
       });
-      await PushNotifications.createChannel({
-        id: 'olive_order_new',
-        name: 'New Orders (Legacy)',
-        description: 'Critical incoming order alerts.',
-        importance: 5,
-        visibility: 1,
-        vibration: true,
-        sound: 'order_alert',
-      });
+
+      // 4. System Announcements Channel
       await PushNotifications.createChannel({
         id: 'olive_system',
         name: 'System Alerts',
@@ -83,7 +85,17 @@ export default function PushNotificationManager() {
     channel.onmessage = (event) => {
       const data = event.data || {};
       if (data.type === 'START_ALERT') {
-        SoundAlertEngine.startContinuousAlarm('new_order');
+        const orderId = data.orderId;
+        const dedupKey = `NEW_ORDER:${orderId || Date.now()}`;
+        if (!orderId || NotificationDeduplicator.shouldProcess(dedupKey)) {
+          SoundAlertEngine.startContinuousAlarm('new_order');
+        }
+      } else if (data.type === 'ORDER_DELIVERED') {
+        const orderId = data.orderId;
+        const dedupKey = `ORDER_DELIVERED:${orderId || Date.now()}`;
+        if (!orderId || NotificationDeduplicator.shouldProcess(dedupKey)) {
+          SoundAlertEngine.playOrderDelivered();
+        }
       } else if (data.type === 'STOP_ALERT') {
         SoundAlertEngine.stopAlarm();
       }
@@ -99,17 +111,21 @@ export default function PushNotificationManager() {
     try {
       // Check if Electron
       if (typeof window !== 'undefined' && (window as any).electronAPI) {
+        const electronToken = `desktop_electron_${user.uid}_${navigator.userAgent.slice(0, 20)}`;
         await fetchApi('/api/notifications/token', {
           method: 'POST',
           body: JSON.stringify({
-            token: `desktop_electron_${user.uid}_${navigator.userAgent.slice(0, 20)}`,
+            token: electronToken,
+            deviceId: `electron_${user.uid}`,
             platform: 'electron',
             browser: 'electron',
             deviceName: 'Restaurant Management Desktop (Electron)',
             appName: 'restaurant',
+            role: 'restaurant_manager',
             branchId: activeBranchId || managerProfile?.branchId || 'main_branch'
           })
         });
+        registeredTokenRef.current = electronToken;
         isRegisteredRef.current = true;
         return;
       }
@@ -142,6 +158,7 @@ export default function PushNotificationManager() {
                 branchId: activeBranchId || managerProfile?.branchId || 'main_branch'
               })
             }).catch(() => {});
+            registeredTokenRef.current = pushToken.value;
             isRegisteredRef.current = true;
           }
         });
@@ -152,7 +169,53 @@ export default function PushNotificationManager() {
 
         PushNotifications.addListener('pushNotificationReceived', (notification) => {
           console.log('[Restaurant PushManager] Push received in foreground:', notification);
-          SoundAlertEngine.startContinuousAlarm('new_order');
+          const data = (notification.data || {}) as Record<string, any>;
+          const normType = String(data.type || data.notificationType || '').toUpperCase();
+          const orderId = String(data.orderId || data.order_id || data.id || '');
+          const status = String(data.status || '').toLowerCase();
+
+          if (normType === 'ORDER_DELIVERED' || status === 'delivered') {
+            const dedupKey = `ORDER_DELIVERED:${orderId || Date.now()}`;
+            if (NotificationDeduplicator.shouldProcess(dedupKey)) {
+              SoundAlertEngine.playOrderDelivered();
+              toast.success(notification.body || notification.title || 'Order Delivered Successfully!');
+            }
+          } else if (
+            normType === 'NEW_ORDER' ||
+            normType === 'ORDER_CREATED' ||
+            status === 'pending' ||
+            status === 'pending_acceptance' ||
+            (!normType && !status)
+          ) {
+            const dedupKey = `NEW_ORDER:${orderId || Date.now()}`;
+            if (NotificationDeduplicator.shouldProcess(dedupKey)) {
+              SoundAlertEngine.startContinuousAlarm('new_order');
+              if (orderId) {
+                setNewOrderAlert({
+                  id: orderId,
+                  orderNumber: data.orderNumber || data.dailyOrderNumber || orderId.slice(-6).toUpperCase(),
+                  customerName: data.customerName || 'Online Customer',
+                  finalTotal: data.finalTotal || data.totalAmount || data.amount || 0,
+                  paymentMethod: data.paymentMethod || 'Online',
+                  items: data.items ? (typeof data.items === 'string' ? JSON.parse(data.items) : data.items) : []
+                });
+              }
+            }
+          } else {
+            SoundAlertEngine.playSound('soft_pop');
+          }
+        });
+
+        PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+          console.log('[Restaurant PushManager] Notification tapped:', action);
+          SoundAlertEngine.stopAlarm();
+          const data = (action.notification?.data || {}) as Record<string, any>;
+          const orderId = data.orderId || data.order_id || data.id;
+          if (orderId) {
+            navigate(`/live-orders?orderId=${encodeURIComponent(orderId)}`);
+          } else {
+            navigate('/live-orders');
+          }
         });
 
         await PushNotifications.register();
@@ -184,6 +247,7 @@ export default function PushNotificationManager() {
                 branchId: activeBranchId || managerProfile?.branchId || 'main_branch'
               })
             });
+            registeredTokenRef.current = currentToken;
             isRegisteredRef.current = true;
           }
         }
@@ -192,6 +256,41 @@ export default function PushNotificationManager() {
       console.warn('[Restaurant PushManager] Token registration warning:', err.message);
     }
   }, [user, activeBranchId, managerProfile, createChannels]);
+
+  // Handle Electron desktop notification tap to deep link directly to order
+  useEffect(() => {
+    const desktop = (window as any).restaurantDesktop || (window as any).electronAPI;
+    if (desktop && typeof desktop.onNotificationClick === 'function') {
+      const unsub = desktop.onNotificationClick((data: any) => {
+        console.log('[Restaurant PushManager] Desktop native notification clicked:', data);
+        SoundAlertEngine.stopAlarm();
+        const orderId = data?.orderId;
+        if (orderId) {
+          navigate(`/live-orders?orderId=${encodeURIComponent(orderId)}`);
+        } else {
+          navigate('/live-orders');
+        }
+      });
+      return () => {
+        if (typeof unsub === 'function') unsub();
+      };
+    }
+  }, [navigate]);
+
+  // Deregister token on logout
+  useEffect(() => {
+    if (!user && isRegisteredRef.current) {
+      const token = registeredTokenRef.current;
+      if (token) {
+        fetchApi('/api/notifications/token/deregister', {
+          method: 'POST',
+          body: JSON.stringify({ token })
+        }).catch(() => {});
+      }
+      registeredTokenRef.current = null;
+      isRegisteredRef.current = false;
+    }
+  }, [user]);
 
   // 3. User clicks "Enable Kitchen Alerts"
   const handleEnablePermission = async () => {
@@ -223,7 +322,7 @@ export default function PushNotificationManager() {
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const order = { id: change.doc.id, ...change.doc.data() } as any;
-          const eventId = `new_order:${order.id}:${order.version || 1}`;
+          const eventId = `NEW_ORDER:${order.id}`;
 
           // Check deduplication
           if (NotificationDeduplicator.shouldProcess(eventId)) {

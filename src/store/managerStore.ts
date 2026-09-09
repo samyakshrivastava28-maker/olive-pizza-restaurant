@@ -15,6 +15,7 @@ import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
 import { fetchApi } from '../lib/api';
 import { SoundAlertEngine } from '../lib/SoundAlertEngine';
+import { NotificationDeduplicator } from '../lib/NotificationDeduplicator';
 import type { 
   Order, 
   OrderStatus, 
@@ -402,7 +403,9 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
             const data = change.doc.data();
             const s = (data.status || '').toLowerCase();
             if (s === 'delivered') {
-              SoundAlertEngine.playOrderDelivered();
+              if (NotificationDeduplicator.shouldProcess(`ORDER_DELIVERED:${change.doc.id}`)) {
+                SoundAlertEngine.playOrderDelivered();
+              }
             }
           }
         });

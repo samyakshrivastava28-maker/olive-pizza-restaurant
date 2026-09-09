@@ -39,8 +39,12 @@ messaging.onBackgroundMessage(async (payload) => {
   const tag = data.tag || `notification_${Date.now()}`;
   const notifTitle = payload.notification?.title || data.title || 'Olive Pizza Restaurant & Kitchen';
   const notifBody = payload.notification?.body || data.body || 'New operational update received';
-  const orderId = data.orderId;
+  const orderId = data.orderId || data.order_id;
   const stage = data.stage || 'update';
+  const normType = String(data.type || data.notificationType || '').toUpperCase();
+  const status = String(data.status || '').toLowerCase();
+  const isDelivered = normType === 'ORDER_DELIVERED' || status === 'delivered';
+  const targetUrl = orderId ? `/#/live-orders?orderId=${encodeURIComponent(orderId)}` : '/#/live-orders';
 
   const options = {
     body: notifBody,
@@ -48,11 +52,11 @@ messaging.onBackgroundMessage(async (payload) => {
     badge: BADGE,
     tag,
     renotify: true,
-    requireInteraction: true,
+    requireInteraction: !isDelivered,
     silent: false,
-    vibrate: [300, 200, 300, 200, 300],
+    vibrate: isDelivered ? [200, 100, 200] : [300, 200, 300, 200, 300],
     data: {
-      url: '/live-orders',
+      url: targetUrl,
       orderId,
       stage,
       role: 'restaurant_manager'
@@ -60,7 +64,11 @@ messaging.onBackgroundMessage(async (payload) => {
     timestamp: Date.now()
   };
 
-  BROADCAST.postMessage({ type: 'START_ALERT', orderId, sound: data.sound || 'order_alert' });
+  if (isDelivered) {
+    BROADCAST.postMessage({ type: 'ORDER_DELIVERED', orderId, sound: 'order_delivered' });
+  } else {
+    BROADCAST.postMessage({ type: 'START_ALERT', orderId, sound: 'new_order' });
+  }
   await self.registration.showNotification(notifTitle, options);
 });
 
@@ -74,15 +82,20 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
 
+  const targetUrl = notifData.url || '/#/live-orders';
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
         if ('focus' in client) {
+          if ('navigate' in client && targetUrl) {
+            client.navigate(targetUrl);
+          }
           return client.focus();
         }
       }
       if (clients.openWindow) {
-        return clients.openWindow(notifData.url || '/live-orders');
+        return clients.openWindow(targetUrl);
       }
     })
   );

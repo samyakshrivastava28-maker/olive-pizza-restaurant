@@ -10,10 +10,20 @@ contextBridge.exposeInMainWorld('restaurantDesktop', {
   maximize: () => ipcRenderer.invoke('window-maximize'),
   toggleFullscreen: () => ipcRenderer.invoke('window-toggle-fullscreen'),
   close: () => ipcRenderer.invoke('window-close'),
-  showNativeNotification: (opts) => ipcRenderer.invoke('show-native-notification', opts)
+  showNativeNotification: (opts) => ipcRenderer.invoke('show-native-notification', opts),
+  onNotificationClick: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on('notification-click', handler);
+    return () => ipcRenderer.removeListener('notification-click', handler);
+  }
 });
 
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
-  showNativeNotification: (opts) => ipcRenderer.invoke('show-native-notification', opts)
+  showNativeNotification: (opts) => ipcRenderer.invoke('show-native-notification', opts),
+  onNotificationClick: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on('notification-click', handler);
+    return () => ipcRenderer.removeListener('notification-click', handler);
+  }
 });

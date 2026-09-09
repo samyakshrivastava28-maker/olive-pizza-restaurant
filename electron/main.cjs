@@ -237,6 +237,7 @@ ipcMain.handle('show-native-notification', (event, { title, body, orderId }) => 
       if (mainWindow) {
         if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.focus();
+        mainWindow.webContents.send('notification-click', { orderId });
       }
     });
     notif.show();
