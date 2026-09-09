@@ -1,5 +1,5 @@
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:allowBackup="true"
@@ -31,9 +31,35 @@
         </activity>
 
 
+        <!-- Full-Screen Native Urgent Order Alert Activity -->
+        <activity
+            android:name=".UrgentOrderAlertActivity"
+            android:label="Urgent Order Alert"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true"
+            android:exported="false" />
+
+        <!-- Remove default Capacitor MessagingService to allow custom background wakeups -->
+        <service
+            android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"
+            tools:node="remove" />
+
+        <!-- Custom Firebase Messaging Service for Background Urgent Orders -->
+        <service
+            android:name=".RestaurantMessagingService"
+            android:directBootAware="true"
+            android:exported="true">
+            <intent-filter android:priority="999">
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="olive_order_new" />
+            android:value="olive_order_new_v2" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

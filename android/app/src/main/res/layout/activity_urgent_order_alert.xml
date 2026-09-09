@@ -1,0 +1,159 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#090D16"
+    android:padding="24dp"
+    android:gravity="center_horizontal">
+
+    <!-- Top Badge -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingTop="32dp"
+        android:paddingBottom="16dp">
+
+        <TextView
+            android:id="@+id/alert_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🔔 URGENT NEW ORDER"
+            android:textColor="#F59E0B"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.08" />
+    </LinearLayout>
+
+    <!-- Center Card -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:background="#131B2E"
+        android:padding="24dp"
+        android:gravity="center_vertical">
+
+        <!-- Order Number -->
+        <TextView
+            android:id="@+id/alert_order_number"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Order #07"
+            android:textColor="#FFFFFF"
+            android:textSize="36sp"
+            android:textStyle="bold"
+            android:gravity="center" />
+
+        <!-- Total Amount -->
+        <TextView
+            android:id="@+id/alert_total_amount"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="₹0"
+            android:textColor="#10B981"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:layout_marginTop="8dp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#222F4C"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="20dp" />
+
+        <!-- Items Preview -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ORDER DETAILS"
+            android:textColor="#94A3B8"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.1" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="140dp"
+            android:layout_marginTop="8dp">
+
+            <TextView
+                android:id="@+id/alert_items_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Loading items..."
+                android:textColor="#E2E8F0"
+                android:textSize="16sp"
+                android:lineSpacingExtra="4dp" />
+        </ScrollView>
+
+        <!-- Payment Method -->
+        <TextView
+            android:id="@+id/alert_payment_method"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="PAYMENT: COD"
+            android:textColor="#F59E0B"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:layout_marginTop="12dp" />
+    </LinearLayout>
+
+    <!-- Action Buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="20dp"
+        android:paddingBottom="16dp">
+
+        <!-- Accept Button -->
+        <Button
+            android:id="@+id/btn_accept_order"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="ACCEPT ORDER"
+            android:textColor="#020617"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:backgroundTint="#F59E0B" />
+
+        <!-- Reject and View Order Buttons Row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="12dp">
+
+            <Button
+                android:id="@+id/btn_reject_order"
+                android:layout_width="0dp"
+                android:layout_height="50dp"
+                android:layout_weight="1"
+                android:text="REJECT"
+                android:textColor="#EF4444"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:backgroundTint="#1E293B"
+                android:layout_marginEnd="6dp" />
+
+            <Button
+                android:id="@+id/btn_view_order"
+                android:layout_width="0dp"
+                android:layout_height="50dp"
+                android:layout_weight="1"
+                android:text="VIEW ORDER"
+                android:textColor="#E2E8F0"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:backgroundTint="#1E293B"
+                android:layout_marginStart="6dp" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

@@ -370,6 +370,28 @@ export default function PushNotificationManager() {
     }
   };
 
+  const handleRejectOrderFromAlert = async (orderId: string) => {
+    SoundAlertEngine.stopAlarm();
+    setNewOrderAlert(null);
+    try {
+      const res = await updateOrderStatus(orderId, 'cancelled', 'Rejected from urgent order alert');
+      if (res && res.success) {
+        SoundAlertEngine.playSound('order_cancelled');
+        toast.success('Order rejected and cancelled.');
+      } else {
+        toast.error(res?.error || 'Failed to reject order.');
+      }
+    } catch {
+      toast.error('Failed to reject order.');
+    }
+  };
+
+  const handleViewOrderFromAlert = (orderId: string) => {
+    SoundAlertEngine.stopAlarm();
+    setNewOrderAlert(null);
+    navigate(`/live-orders?orderId=${encodeURIComponent(orderId)}`);
+  };
+
   return (
     <>
       {/* Educational Permission Banner */}
@@ -463,19 +485,27 @@ export default function PushNotificationManager() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3 pt-2">
+            <div className="flex flex-col gap-2.5 pt-2">
               <button
                 onClick={() => handleAcceptOrderFromAlert(newOrderAlert.id)}
-                className="flex-1 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm tracking-wide transition shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2"
+                className="w-full py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm tracking-wide transition shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2"
               >
-                <CheckCircle className="w-4 h-4" /> Accept Order
+                <CheckCircle className="w-4 h-4" /> ACCEPT ORDER
               </button>
-              <button
-                onClick={handleDismissOrderAlert}
-                className="px-5 py-3.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-sm transition"
-              >
-                Silence Alarm
-              </button>
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={() => handleRejectOrderFromAlert(newOrderAlert.id)}
+                  className="flex-1 py-3 rounded-2xl bg-rose-950/40 hover:bg-rose-900/50 border border-rose-800/40 text-rose-300 font-bold text-xs transition flex items-center justify-center gap-1.5"
+                >
+                  <X className="w-3.5 h-3.5" /> REJECT
+                </button>
+                <button
+                  onClick={() => handleViewOrderFromAlert(newOrderAlert.id)}
+                  className="flex-1 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition flex items-center justify-center gap-1.5"
+                >
+                  VIEW ORDER
+                </button>
+              </div>
             </div>
           </div>
         </div>
