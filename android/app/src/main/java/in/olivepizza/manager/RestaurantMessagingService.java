@@ -1,4 +1,4 @@
-﻿package in.olivepizza.manager;
+package in.olivepizza.manager;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
