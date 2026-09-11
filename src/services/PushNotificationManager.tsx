@@ -28,7 +28,18 @@ export default function PushNotificationManager() {
       // 1. Delete legacy channels to clear any cached silent/corrupted channel settings
       await PushNotifications.deleteChannel({ id: 'olive_order_new' }).catch(() => {});
 
-      // 2. Urgent Incoming Order Channel (v2) -> new_order.mp3
+      // 2. Urgent Incoming Order Channel (v3 Alarm) -> new_order.mp3
+      await PushNotifications.createChannel({
+        id: 'olive_order_alarm_v3',
+        name: 'Urgent Order Alarms (v3)',
+        description: 'Hardware-level incoming order alarms. Plays continuous chime through alarm audio stream.',
+        importance: 5, // MAX importance (heads-up banner + audio)
+        visibility: 1, // Public on lockscreen
+        vibration: true,
+        sound: 'new_order',
+      });
+
+      // 2b. Backward compatibility channel (v2)
       await PushNotifications.createChannel({
         id: 'olive_order_new_v2',
         name: 'New Orders Alarm (v2)',

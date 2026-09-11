@@ -116,20 +116,30 @@ public class UrgentOrderAlertActivity extends AppCompatActivity {
 
     private void startChime() {
         try {
+            Uri alarmUri = null;
             int resId = getResources().getIdentifier("new_order", "raw", getPackageName());
             if (resId != 0) {
-                mediaPlayer = MediaPlayer.create(this, resId);
-                if (mediaPlayer != null) {
-                    mediaPlayer.setAudioAttributes(
-                        new AudioAttributes.Builder()
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                            .setUsage(AudioAttributes.USAGE_ALARM)
-                            .build()
-                    );
-                    mediaPlayer.setLooping(true);
-                    mediaPlayer.start();
-                }
+                alarmUri = Uri.parse("android.resource://" + getPackageName() + "/" + resId);
             }
+            if (alarmUri == null) {
+                alarmUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM);
+            }
+            if (alarmUri == null) {
+                alarmUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION);
+            }
+
+            mediaPlayer = new MediaPlayer();
+            mediaPlayer.setDataSource(this, alarmUri);
+            mediaPlayer.setAudioAttributes(
+                new AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .build()
+            );
+            mediaPlayer.setLooping(true);
+            mediaPlayer.prepare();
+            mediaPlayer.start();
+            Log.d(TAG, "Hardware alarm sound playing for urgent order");
         } catch (Exception e) {
             Log.w(TAG, "Audio play notice: " + e.getMessage());
         }

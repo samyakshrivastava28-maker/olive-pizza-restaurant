@@ -109,10 +109,10 @@ public class RestaurantMessagingService extends MessagingService {
         if (body == null) body = "₹" + (totalAmount != null ? totalAmount : "0") + " • " + (paymentMethod != null ? paymentMethod : "COD");
 
         int notifId = orderId != null ? orderId.hashCode() : (int) (System.currentTimeMillis() & 0x7fffffff);
-        String channelId = "olive_order_new_v2";
+        String channelId = "olive_order_alarm_v3";
 
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        ensureChannelExists(nm, channelId, "Olive New Orders Alarm (v2)", true, "new_order");
+        ensureChannelExists(nm, channelId, "Olive Order Urgent Alarm (v3)", true, "new_order");
 
         // Intent for UrgentOrderAlertActivity (full-screen intent)
         Intent fullScreenIntent = new Intent(this, UrgentOrderAlertActivity.class);
@@ -158,7 +158,7 @@ public class RestaurantMessagingService extends MessagingService {
             PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
         );
 
-        Uri soundUri = resolveSoundUri("new_order");
+        Uri soundUri = resolveSoundUri("new_order", true);
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, channelId)
             .setSmallIcon(getSmallIconResId())
@@ -220,7 +220,7 @@ public class RestaurantMessagingService extends MessagingService {
             .setContentIntent(contentPendingIntent)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
-            .setSound(resolveSoundUri(sound != null ? sound : "order_delivered"));
+            .setSound(resolveSoundUri(sound != null ? sound : "order_delivered", false));
 
         if (nm != null) nm.notify(notifId, builder.build());
     }
@@ -235,7 +235,7 @@ public class RestaurantMessagingService extends MessagingService {
         channel.setShowBadge(true);
         channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
 
-        Uri soundUri = resolveSoundUri(soundName);
+        Uri soundUri = resolveSoundUri(soundName, isAlarm);
         AudioAttributes audioAttributes = new AudioAttributes.Builder()
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .setUsage(isAlarm ? AudioAttributes.USAGE_ALARM : AudioAttributes.USAGE_NOTIFICATION)
@@ -251,7 +251,7 @@ public class RestaurantMessagingService extends MessagingService {
         nm.createNotificationChannel(channel);
     }
 
-    private Uri resolveSoundUri(String soundName) {
+    private Uri resolveSoundUri(String soundName, boolean isAlarm) {
         if (soundName != null && !soundName.isEmpty()) {
             String cleanName = soundName.contains(".") ? soundName.split("\\.")[0] : soundName;
             int resId = getResources().getIdentifier(cleanName, "raw", getPackageName());
@@ -259,7 +259,9 @@ public class RestaurantMessagingService extends MessagingService {
                 return Uri.parse("android.resource://" + getPackageName() + "/" + resId);
             }
         }
-        return android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION);
+        return android.media.RingtoneManager.getDefaultUri(
+            isAlarm ? android.media.RingtoneManager.TYPE_ALARM : android.media.RingtoneManager.TYPE_NOTIFICATION
+        );
     }
 
     private int getSmallIconResId() {

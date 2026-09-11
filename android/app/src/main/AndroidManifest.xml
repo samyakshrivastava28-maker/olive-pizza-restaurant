@@ -59,7 +59,7 @@
 
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="olive_order_new_v2" />
+            android:value="olive_order_alarm_v3" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
