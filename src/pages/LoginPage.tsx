@@ -3,14 +3,15 @@ import {
   signInWithPopup, 
   signInWithEmailAndPassword, 
   signInWithCredential,
-  GoogleAuthProvider,
+  GoogleAuthProvider, 
   sendPasswordResetEmail,
+  sendEmailVerification,
   signOut
 } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 import { Capacitor } from '@capacitor/core';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Mail, Lock, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Mail, Lock, AlertCircle, ArrowRight, ShieldCheck, Key, X } from 'lucide-react';
 import { AppLogo } from '../components/common/AppLogo';
 import { fetchApi } from '../lib/api';
 import { useManagerStore } from '../store/managerStore';
@@ -22,6 +23,12 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 4-Digit Franchise PIN Verification Modal State
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pin, setPin] = useState('');
+  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
+  const [pendingAuth, setPendingAuth] = useState<{ user: any; resp: any } | null>(null);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -49,10 +56,47 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  const completeManagerSession = (user: any, u: any) => {
+    const emailLower = (user.email || '').toLowerCase().trim();
+    useManagerStore.setState({
+      user,
+      managerProfile: {
+        uid: user.uid,
+        name: u.name || user.displayName || emailLower.split('@')[0] || 'Restaurant Manager',
+        email: user.email || '',
+        role: u.role as any,
+        branchId: u.branchId || 'main_branch',
+        branchName: u.branchName || 'Olive Pizza — Rajnandgaon HQ',
+        permissions: u.permissions || [],
+        isActive: true
+      },
+      userRole: u.role,
+      isAuthorized: true,
+      isAuthChecking: false,
+      restrictedReason: null,
+      restrictedEmail: null,
+      activeBranchId: u.branchId || 'main_branch',
+      activeBranchName: u.branchName || 'Olive Pizza — Rajnandgaon HQ',
+      permissions: u.permissions || []
+    });
+
+    toast.success('Welcome to Restaurant Management');
+    requestPostLoginNotificationPermissions().catch(() => {});
+    navigate(from, { replace: true });
+  };
+
   const verifyAndAuthorizeManager = async (user: any): Promise<boolean> => {
     const emailLower = (user.email || '').toLowerCase().trim();
-    const isMasterOwner = emailLower === 'webhub2811@gmail.com' || emailLower === 'olivepizzarjn@gmail.com' || emailLower === 'olivepizzamaker@gmail.com';
 
+    // 1. Email Verification Gate
+    if (!user.emailVerified) {
+      await sendEmailVerification(user).catch(() => {});
+      await signOut(auth).catch(() => {});
+      setError('Email verification required. A verification email has been sent to your email address. Please verify your email before logging in.');
+      return false;
+    }
+
+    // 2. Server Authorization Check
     try {
       const resp = await fetchApi<any>('/api/auth/authorize-app', {
         method: 'POST',
@@ -63,70 +107,80 @@ export const LoginPage: React.FC = () => {
       });
 
       if (resp && resp.authorized) {
-        const u = resp.user;
-        useManagerStore.setState({
-          user,
-          managerProfile: {
-            uid: user.uid,
-            name: u.name || user.displayName || emailLower.split('@')[0] || 'Restaurant Manager',
-            email: user.email || '',
-            role: u.role as any,
-            branchId: u.branchId || 'main_branch',
-            branchName: u.branchName || 'Olive Pizza — Rajnandgaon HQ',
-            permissions: u.permissions || [],
-            isActive: true
-          },
-          userRole: u.role,
-          isAuthorized: true,
-          isAuthChecking: false,
-          restrictedReason: null,
-          restrictedEmail: null,
-          activeBranchId: u.branchId || 'main_branch',
-          activeBranchName: u.branchName || 'Olive Pizza — Rajnandgaon HQ',
-          permissions: u.permissions || []
-        });
-        return true;
-      } else {
-        const denialReason = resp?.reason || 'This account is not authorized to use the Olive Pizza Restaurant Management application.';
-        if (resp && !resp.authorized && !isMasterOwner) {
-          await signOut(auth).catch(() => {});
-          useManagerStore.setState({
-            user: null,
-            managerProfile: null,
-            userRole: null,
-            isAuthorized: false,
-            isAuthChecking: false,
-            restrictedReason: denialReason,
-            restrictedEmail: emailLower
-          });
-          setError(denialReason);
+        if (resp.requiresPin) {
+          // Trigger 4-digit PIN verification modal
+          setPendingAuth({ user, resp });
+          setShowPinModal(true);
           return false;
+        } else {
+          completeManagerSession(user, resp.user);
+          return true;
         }
+      } else {
+        let denialReason = resp?.reason || 'This account is not authorized to use the Olive Pizza Restaurant Management application.';
+        if (resp?.code === 'PENDING_OWNER_APPROVAL') {
+          denialReason = 'Your Restaurant Manager account is pending Owner approval. You will receive an email once approved.';
+        } else if (resp?.code === 'ACCOUNT_REJECTED') {
+          denialReason = 'Your Restaurant Manager account request was rejected by the Owner.';
+        } else if (resp?.code === 'ACCOUNT_DEACTIVATED') {
+          denialReason = 'This Restaurant Manager account has been deactivated.';
+        }
+
+        await signOut(auth).catch(() => {});
+        useManagerStore.setState({
+          user: null,
+          managerProfile: null,
+          userRole: null,
+          isAuthorized: false,
+          isAuthChecking: false,
+          restrictedReason: denialReason,
+          restrictedEmail: emailLower
+        });
+        setError(denialReason);
+        return false;
       }
     } catch (apiErr: any) {
-      console.warn('[LoginPage] Authorization API check notice:', apiErr);
-      if (isMasterOwner) {
-        return true;
-      }
-    }
-
-    if (!isMasterOwner) {
-      const denialReason = 'This account is not authorized to use the Olive Pizza Restaurant Management application.';
+      console.warn('[LoginPage] Authorization API error:', apiErr);
       await signOut(auth).catch(() => {});
-      useManagerStore.setState({
-        user: null,
-        managerProfile: null,
-        userRole: null,
-        isAuthorized: false,
-        isAuthChecking: false,
-        restrictedReason: denialReason,
-        restrictedEmail: emailLower
-      });
-      setError(denialReason);
+      setError(apiErr?.message || 'Failed to communicate with authorization server.');
       return false;
     }
+  };
 
-    return true;
+  const handlePinSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingAuth || !/^\d{4}$/.test(pin.trim())) {
+      toast.error('Please enter a 4-digit security PIN');
+      return;
+    }
+
+    setIsVerifyingPin(true);
+    const toastId = toast.loading('Verifying security PIN...');
+
+    try {
+      const res = await fetchApi<any>('/api/restaurant-managers/verify-pin', {
+        method: 'POST',
+        body: JSON.stringify({ pin: pin.trim() })
+      });
+
+      if (res && res.success) {
+        toast.success('PIN verified successfully!', { id: toastId });
+        setShowPinModal(false);
+        completeManagerSession(pendingAuth.user, pendingAuth.resp.user);
+      } else {
+        const errMsg = res?.error || 'Invalid PIN';
+        toast.error(errMsg, { id: toastId });
+        if (res?.isLocked) {
+          setError(errMsg);
+          setShowPinModal(false);
+          await signOut(auth).catch(() => {});
+        }
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'PIN verification failed', { id: toastId });
+    } finally {
+      setIsVerifyingPin(false);
+    }
   };
 
   const handleGoogleSignIn = async () => {
@@ -138,23 +192,16 @@ export const LoginPage: React.FC = () => {
         const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
         const res = await FirebaseAuthentication.signInWithGoogle();
         const idToken = res.credential?.idToken;
-        if (!idToken) throw new Error('Failed to get Google ID token on mobile device.');
+        if (!idToken) throw new Error('Failed to retrieve Google Identity token.');
         const credential = GoogleAuthProvider.credential(idToken);
-        const cred = await signInWithCredential(auth, credential);
-        user = cred.user;
+        const userCred = await signInWithCredential(auth, credential);
+        user = userCred.user;
       } else {
-        const cred = await signInWithPopup(auth, googleProvider);
-        user = cred.user;
+        const res = await signInWithPopup(auth, googleProvider);
+        user = res.user;
       }
 
-      const authorized = await verifyAndAuthorizeManager(user);
-      if (!authorized) {
-        return;
-      }
-
-      toast.success('Signed in successfully');
-      requestPostLoginNotificationPermissions().catch(() => {});
-      navigate(from, { replace: true });
+      await verifyAndAuthorizeManager(user);
     } catch (err: any) {
       console.error('[Login] Google sign-in failed:', err);
       const msg = formatAuthError(err);
@@ -175,14 +222,7 @@ export const LoginPage: React.FC = () => {
     setError(null);
     try {
       const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-      const authorized = await verifyAndAuthorizeManager(cred.user);
-      if (!authorized) {
-        return;
-      }
-
-      toast.success('Welcome to Restaurant Management');
-      requestPostLoginNotificationPermissions().catch(() => {});
-      navigate(from, { replace: true });
+      await verifyAndAuthorizeManager(cred.user);
     } catch (err: any) {
       console.error('[Login] Email sign-in failed:', err);
       const msg = formatAuthError(err);
@@ -206,13 +246,6 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const handleQuickManagerSignIn = (selectedEmail: string, name: string, _role?: string) => {
-    setEmail(selectedEmail);
-    toast(`Selected ${name} (${selectedEmail}). Sign in with password or Google to establish your session.`, {
-      icon: '🔐',
-    });
-  };
-
   return (
     <div className="min-h-screen bg-[#090d0b] text-[#e8eee9] flex flex-col justify-center items-center p-4">
       <div className="w-full max-w-md space-y-6">
@@ -220,7 +253,7 @@ export const LoginPage: React.FC = () => {
         <div className="flex flex-col items-center text-center space-y-3">
           <AppLogo variant="full" size="xl" subtitle="Restaurant Management" />
           <p className="text-xs text-[#a4c29c] max-w-sm pt-1">
-            Secure management portal for authorized branch managers, chefs, and restaurant operators.
+            Secure operations portal for authorized branch restaurant managers.
           </p>
         </div>
 
@@ -232,45 +265,6 @@ export const LoginPage: React.FC = () => {
               <span>{error}</span>
             </div>
           )}
-
-          {/* 1-Click Fast Authorized Terminal Access */}
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => handleQuickManagerSignIn('olivepizzarjn@gmail.com', 'Olive Pizza Master GM', 'owner')}
-              className="w-full py-2.5 px-3.5 rounded-xl bg-[#1b241e] hover:bg-[#222d26] border border-[#57854d]/40 text-xs font-bold text-white flex items-center justify-between transition-all cursor-pointer shadow-sm hover:border-[#57854d]"
-            >
-              <div className="flex items-center gap-2.5">
-                <ShieldCheck className="w-4 h-4 text-[#c6a052]" />
-                <div className="text-left">
-                  <div className="font-extrabold text-white text-[11px]">Sign in as Master General Manager</div>
-                  <div className="text-[10px] text-[#a4c29c]">olivepizzarjn@gmail.com</div>
-                </div>
-              </div>
-              <ArrowRight className="w-3.5 h-3.5 text-[#c6a052]" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickManagerSignIn('olivepizzamaker@gmail.com', 'Head Kitchen Manager & Chef', 'restaurant_manager')}
-              className="w-full py-2.5 px-3.5 rounded-xl bg-[#1b241e] hover:bg-[#222d26] border border-[#26332a] hover:border-[#c6a052]/40 text-xs font-bold text-white flex items-center justify-between transition-all cursor-pointer shadow-sm"
-            >
-              <div className="flex items-center gap-2.5">
-                <ShieldCheck className="w-4 h-4 text-[#57854d]" />
-                <div className="text-left">
-                  <div className="font-extrabold text-white text-[11px]">Sign in as Lead Kitchen Operator</div>
-                  <div className="text-[10px] text-[#7ba372]">olivepizzamaker@gmail.com</div>
-                </div>
-              </div>
-              <ArrowRight className="w-3.5 h-3.5 text-[#57854d]" />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="flex-1 h-px bg-[#26332a]" />
-            <span className="text-[10px] uppercase font-bold text-[#7ba372]">Or OAuth / Email</span>
-            <div className="flex-1 h-px bg-[#26332a]" />
-          </div>
 
           {/* Google Sign-in */}
           <button
@@ -309,7 +303,7 @@ export const LoginPage: React.FC = () => {
           {/* Form */}
           <form onSubmit={handleEmailSignIn} className="space-y-4 text-xs">
             <div>
-              <label className="block font-semibold text-[#a4c29c] mb-1">Staff Email Address</label>
+              <label className="block font-semibold text-[#a4c29c] mb-1">Restaurant Manager Email</label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-[#7ba372] absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
@@ -356,7 +350,7 @@ export const LoginPage: React.FC = () => {
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
                 <>
-                  <span>Authenticate & Enter Console</span>
+                  <span>Sign In & Verify Account</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </>
               )}
@@ -368,6 +362,77 @@ export const LoginPage: React.FC = () => {
           Authorized internal staff only • Central RBAC Protected
         </p>
       </div>
+
+      {/* 4-Digit Security PIN Modal */}
+      {showPinModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#141b16] border border-[#26332a] rounded-3xl max-w-sm w-full p-6 space-y-5 shadow-2xl animate-in zoom-in-95 duration-150 text-[#e8eee9]">
+            <div className="flex items-center justify-between pb-3 border-b border-[#26332a]">
+              <div className="flex items-center gap-2">
+                <Key className="w-5 h-5 text-[#c6a052]" />
+                <h3 className="font-bold text-white text-base">Manager Security PIN</h3>
+              </div>
+              <button
+                onClick={async () => {
+                  setShowPinModal(false);
+                  setPendingAuth(null);
+                  await signOut(auth).catch(() => {});
+                }}
+                className="p-1 text-slate-400 hover:text-white rounded-lg transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handlePinSubmit} className="space-y-4 text-xs">
+              <p className="text-[#a4c29c]">
+                Enter your 4-digit security PIN to access operational restaurant management.
+              </p>
+
+              <div>
+                <input
+                  type="password"
+                  maxLength={4}
+                  required
+                  autoFocus
+                  placeholder="••••"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                  className="w-full bg-[#0d120f] border border-[#26332a] rounded-2xl py-3.5 text-center font-mono font-black text-[#c6a052] text-2xl tracking-[0.3em] focus:outline-none focus:border-[#57854d]"
+                />
+              </div>
+
+              <div className="p-3 bg-[#1b241e] border border-[#26332a] rounded-xl text-[11px] text-[#7ba372] flex items-start gap-2">
+                <ShieldCheck size={16} className="text-[#57854d] shrink-0 mt-0.5" />
+                <p>Security lock enforces 30-minute lockout after 5 consecutive failed attempts.</p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setShowPinModal(false);
+                    setPendingAuth(null);
+                    await signOut(auth).catch(() => {});
+                  }}
+                  className="px-3.5 py-2.5 bg-[#1b241e] hover:bg-[#222d26] text-[#a4c29c] rounded-xl font-bold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isVerifyingPin}
+                  className="px-5 py-2.5 bg-[#57854d] hover:bg-[#426939] text-white font-bold rounded-xl transition shadow-lg shadow-green-950/40"
+                >
+                  {isVerifyingPin ? 'Verifying...' : 'Verify PIN & Enter'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+export default LoginPage;

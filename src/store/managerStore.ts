@@ -207,44 +207,16 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         } catch (err: any) {
           console.error('[ManagerStore] Auth handshake network error:', err);
 
-          const isMasterOwner = emailLower === 'webhub2811@gmail.com' || emailLower === 'olivepizzarjn@gmail.com' || emailLower === 'olivepizzamaker@gmail.com';
-          if (isMasterOwner) {
-            const profile: ManagerAccount = {
-              uid: currentUser.uid,
-              name: 'Platform Owner',
-              email: currentUser.email || '',
-              role: 'owner',
-              branchId: 'main_branch',
-              branchName: 'Olive Pizza — Rajnandgaon HQ',
-              permissions: ['*'],
-              isActive: true
-            };
-            set({
-              user: currentUser,
-              managerProfile: profile,
-              userRole: 'owner',
-              isAuthorized: true,
-              isAuthChecking: false,
-              restrictedReason: null,
-              restrictedEmail: null,
-              activeBranchId: 'main_branch',
-              activeBranchName: 'Olive Pizza — Rajnandgaon HQ'
-            });
-            get().subscribeToLiveOrders('main_branch');
-            get().subscribeToRiders('main_branch');
-            get().fetchHistoricalOrders();
-          } else {
-            await signOut(auth).catch(() => {});
-            set({
-              user: null,
-              managerProfile: null,
-              userRole: null,
-              isAuthorized: false,
-              isAuthChecking: false,
-              restrictedReason: 'This account is not authorized to use this Olive Pizza application.',
-              restrictedEmail: emailLower
-            });
-          }
+          await signOut(auth).catch(() => {});
+          set({
+            user: null,
+            managerProfile: null,
+            userRole: null,
+            isAuthorized: false,
+            isAuthChecking: false,
+            restrictedReason: err?.message || 'Authorization service unavailable. Please check your network.',
+            restrictedEmail: emailLower
+          });
         }
       } else {
         if (liveOrdersUnsub) {
