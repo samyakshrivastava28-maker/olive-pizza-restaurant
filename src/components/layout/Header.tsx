@@ -26,10 +26,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   } = useManagerStore();
 
   const branches = [
-    { id: 'main_branch', name: 'Olive Pizza — Rajnandgaon (Main)' },
-    { id: 'durg_branch', name: 'Olive Pizza — Durg (Branch 2)' },
-    { id: 'bhilai_branch', name: 'Olive Pizza — Bhilai (Branch 3)' },
-    { id: 'raipur_branch', name: 'Olive Pizza — Raipur (Branch 4)' },
+    { id: 'main_branch', name: 'Olive Pizza — Rajnandgaon' },
   ];
 
   const isGlobalOwner = userRole === 'owner' || 
