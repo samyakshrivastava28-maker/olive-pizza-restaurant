@@ -11,6 +11,7 @@ import {
 import { useManagerStore } from '../store/managerStore';
 import type { DeliveryPartner, Order } from '../types/restaurant';
 import { formatDistanceToNow } from 'date-fns';
+import { FleetLiveMap } from '../components/delivery/FleetLiveMap';
 
 export const DeliveryManagementPage: React.FC = () => {
   const { 
@@ -75,78 +76,13 @@ export const DeliveryManagementPage: React.FC = () => {
             </span>
           </div>
 
-          {/* Map canvas simulation with OpenStreetMap tiles */}
-          <div className="relative w-full h-[440px] rounded-xl overflow-hidden border border-[#26332a] bg-[#0b100d] flex items-center justify-center">
-            {/* Tile background */}
-            <div 
-              className="absolute inset-0 opacity-40 bg-cover bg-center"
-              style={{
-                backgroundImage: `url('https://tile.openstreetmap.org/14/11889/7123.png')`,
-                backgroundSize: 'cover'
-              }}
-            />
-            <div className="absolute inset-0 bg-[#0d120f]/60 backdrop-blur-[1px]" />
-
-            {/* Restaurant Outlet Pin */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center group cursor-pointer z-10">
-              <div className="px-2.5 py-1 rounded-lg bg-[#57854d] text-white text-[10px] font-bold shadow-lg border border-[#c6a052]/40 whitespace-nowrap mb-1">
-                🍕 {activeBranchName}
-              </div>
-              <div className="w-6 h-6 rounded-full bg-[#c6a052] border-2 border-white flex items-center justify-center text-black font-extrabold shadow-xl animate-bounce">
-                ★
-              </div>
-              <div className="w-16 h-16 rounded-full bg-[#57854d]/20 border border-[#57854d]/40 absolute -inset-5 -z-10 animate-ping" />
-            </div>
-
-            {/* Simulated Live Riders Pins */}
-            {riders.map((r, i) => {
-              const offsets = [
-                { top: '35%', left: '42%' },
-                { top: '65%', left: '58%' },
-                { top: '40%', left: '68%' },
-                { top: '70%', left: '38%' },
-              ];
-              const pos = offsets[i % offsets.length];
-
-              return (
-                <div
-                  key={r.id}
-                  onClick={() => setSelectedRider(r)}
-                  className="absolute cursor-pointer group z-20 transition-all hover:scale-110"
-                  style={{ top: pos.top, left: pos.left }}
-                >
-                  <div className="px-2 py-0.5 rounded-md bg-[#141b16] text-white text-[9px] font-bold border border-[#26332a] shadow-md whitespace-nowrap mb-0.5 group-hover:border-[#c6a052]">
-                    {r.name} ({r.isOnline ? 'Online' : 'Offline'})
-                  </div>
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center shadow-lg border ${
-                    r.status === 'available'
-                      ? 'bg-[#10b981] border-white text-white'
-                      : r.status === 'busy'
-                      ? 'bg-amber-500 border-white text-black'
-                      : 'bg-slate-700 border-slate-500 text-slate-300'
-                  }`}>
-                    <Bike className="w-3.5 h-3.5" />
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Map control legend overlay */}
-            <div className="absolute bottom-3 left-3 p-2.5 rounded-xl bg-[#141b16]/90 border border-[#26332a] backdrop-blur-md text-[10px] space-y-1 text-[#a4c29c] z-20">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#10b981]" />
-                <span>Available Rider</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                <span>Busy on Trip</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#c6a052]" />
-                <span>Restaurant Dispatch</span>
-              </div>
-            </div>
-          </div>
+          {/* Real Leaflet OpenStreetMap Fleet Radar Map */}
+          <FleetLiveMap
+            branchName={activeBranchName}
+            riders={riders}
+            selectedRider={selectedRider}
+            onSelectRider={(r) => setSelectedRider(r)}
+          />
         </div>
 
         {/* Right: Riders Directory & Telemetry */}
