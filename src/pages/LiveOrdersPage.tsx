@@ -24,6 +24,28 @@ import type { Order, OrderStatus } from '../types/restaurant';
 import { format, formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
 
+const formatTimeSafe = (val: any) => {
+  if (!val) return '—';
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return '—';
+    return format(d, 'hh:mm:ss a');
+  } catch {
+    return '—';
+  }
+};
+
+const formatDateSafe = (val: any) => {
+  if (!val) return 'Recently';
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return 'Recently';
+    return format(d, 'dd MMMM yyyy, hh:mm:ss a');
+  } catch {
+    return 'Recently';
+  }
+};
+
 export const LiveOrdersPage: React.FC = () => {
   const { 
     liveOrders, 
@@ -305,6 +327,26 @@ export const LiveOrdersPage: React.FC = () => {
                       })()}
                     </div>
                   )}
+
+                  {/* Operational Timestamps Badge */}
+                  {(order.acceptedAt || order.preparingAt || order.readyAt || order.partnerAssignedAt) && (
+                    <div className="p-2.5 rounded-xl bg-[#0d120f] border border-[#26332a] text-[10px] mb-3">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[#7ba372]">
+                        {order.acceptedAt && (
+                          <span>Accepted: <strong className="text-white font-mono">{formatTimeSafe(order.acceptedAt)}</strong></span>
+                        )}
+                        {order.preparingAt && (
+                          <span>Baking: <strong className="text-[#c6a052] font-mono">{formatTimeSafe(order.preparingAt)}</strong></span>
+                        )}
+                        {order.readyAt && (
+                          <span>Ready: <strong className="text-[#10b981] font-mono">{formatTimeSafe(order.readyAt)}</strong></span>
+                        )}
+                        {order.partnerAssignedAt && (
+                          <span>Rider: <strong className="text-cyan-400 font-mono">{formatTimeSafe(order.partnerAssignedAt)}</strong></span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Status Action Buttons */}
@@ -432,7 +474,7 @@ export const LiveOrdersPage: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2 text-xs text-[#a4c29c] mt-1">
                   <Calendar className="w-3.5 h-3.5 text-[#7ba372]" />
-                  <span>{selectedOrderDetails.createdAt ? format(new Date(selectedOrderDetails.createdAt), 'dd MMMM yyyy, hh:mm:ss a') : 'Recently'}</span>
+                  <span>{formatDateSafe(selectedOrderDetails.createdAt)}</span>
                 </div>
               </div>
               <button
@@ -599,49 +641,55 @@ export const LiveOrdersPage: React.FC = () => {
                 {selectedOrderDetails.createdAt && (
                   <div>
                     <span className="text-[#7ba372] block">Placed:</span>
-                    <span className="text-white font-mono">{format(new Date(selectedOrderDetails.createdAt), 'hh:mm:ss a')}</span>
+                    <span className="text-white font-mono">{formatTimeSafe(selectedOrderDetails.createdAt)}</span>
                   </div>
                 )}
                 {selectedOrderDetails.acceptedAt && (
                   <div>
                     <span className="text-[#7ba372] block">Accepted:</span>
-                    <span className="text-white font-mono">{format(new Date(selectedOrderDetails.acceptedAt), 'hh:mm:ss a')}</span>
+                    <span className="text-white font-mono">{formatTimeSafe(selectedOrderDetails.acceptedAt)}</span>
                   </div>
                 )}
                 {selectedOrderDetails.preparingAt && (
                   <div>
                     <span className="text-[#7ba372] block">Baking:</span>
-                    <span className="text-white font-mono">{format(new Date(selectedOrderDetails.preparingAt), 'hh:mm:ss a')}</span>
+                    <span className="text-white font-mono">{formatTimeSafe(selectedOrderDetails.preparingAt)}</span>
+                  </div>
+                )}
+                {selectedOrderDetails.expectedReadyAt && (
+                  <div>
+                    <span className="text-[#c6a052] block">Target Ready:</span>
+                    <span className="text-[#c6a052] font-mono">{formatTimeSafe(selectedOrderDetails.expectedReadyAt)}</span>
                   </div>
                 )}
                 {selectedOrderDetails.readyAt && (
                   <div>
-                    <span className="text-[#7ba372] block">Food Ready:</span>
-                    <span className="text-white font-mono">{format(new Date(selectedOrderDetails.readyAt), 'hh:mm:ss a')}</span>
+                    <span className="text-[#10b981] block">Food Ready:</span>
+                    <span className="text-[#10b981] font-mono">{formatTimeSafe(selectedOrderDetails.readyAt)}</span>
                   </div>
                 )}
                 {selectedOrderDetails.partnerAssignedAt && (
                   <div>
                     <span className="text-[#7ba372] block">Rider Assigned:</span>
-                    <span className="text-white font-mono">{format(new Date(selectedOrderDetails.partnerAssignedAt), 'hh:mm:ss a')}</span>
+                    <span className="text-white font-mono">{formatTimeSafe(selectedOrderDetails.partnerAssignedAt)}</span>
                   </div>
                 )}
                 {(selectedOrderDetails.outForDeliveryAt || selectedOrderDetails.pickedUpAt) && (
                   <div>
                     <span className="text-[#7ba372] block">Out for Delivery:</span>
-                    <span className="text-white font-mono">{format(new Date(selectedOrderDetails.outForDeliveryAt || selectedOrderDetails.pickedUpAt!), 'hh:mm:ss a')}</span>
+                    <span className="text-white font-mono">{formatTimeSafe(selectedOrderDetails.outForDeliveryAt || selectedOrderDetails.pickedUpAt!)}</span>
                   </div>
                 )}
                 {selectedOrderDetails.deliveredAt && (
                   <div>
                     <span className="text-[#10b981] block">Delivered:</span>
-                    <span className="text-white font-mono">{format(new Date(selectedOrderDetails.deliveredAt), 'hh:mm:ss a')}</span>
+                    <span className="text-white font-mono">{formatTimeSafe(selectedOrderDetails.deliveredAt)}</span>
                   </div>
                 )}
                 {selectedOrderDetails.cancelledAt && (
                   <div className="col-span-2">
                     <span className="text-red-400 block">Cancelled:</span>
-                    <span className="text-white font-mono">{format(new Date(selectedOrderDetails.cancelledAt), 'hh:mm:ss a')} ({selectedOrderDetails.cancellationReason || 'No reason specified'})</span>
+                    <span className="text-white font-mono">{formatTimeSafe(selectedOrderDetails.cancelledAt)} ({selectedOrderDetails.cancellationReason || 'No reason specified'})</span>
                   </div>
                 )}
               </div>

@@ -97,6 +97,16 @@ const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
   'out_for_delivery'
 ];
 
+export const formatIso = (val: any): string | undefined => {
+  if (!val) return undefined;
+  if (typeof val === 'string') return val;
+  if (val.toDate && typeof val.toDate === 'function') return val.toDate().toISOString();
+  if (typeof val._seconds === 'number') return new Date(val._seconds * 1000).toISOString();
+  if (typeof val.seconds === 'number') return new Date(val.seconds * 1000).toISOString();
+  if (val instanceof Date) return val.toISOString();
+  return undefined;
+};
+
 export const useManagerStore = create<ManagerState>((set, get) => ({
   user: null,
   managerProfile: null,
@@ -353,14 +363,16 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
                 deliveryPartnerLocation: data.deliveryPartnerLocation,
                 cancellationReason: data.cancellationReason,
                 branchId: orderBranch,
-                acceptedAt: data.acceptedAt,
-                preparingAt: data.preparingAt,
-                readyAt: data.readyAt,
-                partnerAssignedAt: data.partnerAssignedAt,
-                pickedUpAt: data.pickedUpAt,
-                outForDeliveryAt: data.outForDeliveryAt,
-                deliveredAt: data.deliveredAt,
-                cancelledAt: data.cancelledAt,
+                acceptedAt: formatIso(data.acceptedAt),
+                preparingAt: formatIso(data.preparingAt),
+                expectedReadyAt: formatIso(data.expectedReadyAt || data.estimatedReadyAt),
+                estimatedPreparationMinutes: Number(data.estimatedPreparationMinutes) || undefined,
+                readyAt: formatIso(data.readyAt),
+                partnerAssignedAt: formatIso(data.partnerAssignedAt || data.riderAssignedAt),
+                pickedUpAt: formatIso(data.pickedUpAt),
+                outForDeliveryAt: formatIso(data.outForDeliveryAt),
+                deliveredAt: formatIso(data.deliveredAt),
+                cancelledAt: formatIso(data.cancelledAt),
                 appliedCouponCode: data.appliedCouponCode || data.couponCode,
                 createdAt: createdDate,
                 updatedAt: updatedDate,
@@ -457,14 +469,16 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
             deliveryPartnerName: data.deliveryPartnerName,
             cancellationReason: data.cancellationReason,
             branchId: orderBranch,
-            acceptedAt: data.acceptedAt,
-            preparingAt: data.preparingAt,
-            readyAt: data.readyAt,
-            partnerAssignedAt: data.partnerAssignedAt,
-            pickedUpAt: data.pickedUpAt,
-            outForDeliveryAt: data.outForDeliveryAt,
-            deliveredAt: data.deliveredAt,
-            cancelledAt: data.cancelledAt,
+            acceptedAt: formatIso(data.acceptedAt),
+            preparingAt: formatIso(data.preparingAt),
+            expectedReadyAt: formatIso(data.expectedReadyAt || data.estimatedReadyAt),
+            estimatedPreparationMinutes: Number(data.estimatedPreparationMinutes) || undefined,
+            readyAt: formatIso(data.readyAt),
+            partnerAssignedAt: formatIso(data.partnerAssignedAt || data.riderAssignedAt),
+            pickedUpAt: formatIso(data.pickedUpAt),
+            outForDeliveryAt: formatIso(data.outForDeliveryAt),
+            deliveredAt: formatIso(data.deliveredAt),
+            cancelledAt: formatIso(data.cancelledAt),
             appliedCouponCode: data.appliedCouponCode || data.couponCode,
             createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt || Date.now()),
             updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt || Date.now()),

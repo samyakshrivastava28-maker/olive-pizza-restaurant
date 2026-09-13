@@ -95,7 +95,11 @@ export async function fetchApi<T = any>(endpoint: string, options: RequestInit =
     if (!res.ok) {
       return {
         success: false,
-        error: json?.error || json?.message || (res.status === 403 ? 'Unauthorized: You do not have permission for this restaurant action.' : `Server returned error (${res.status})`)
+        status: res.status,
+        code: json?.code,
+        reason: json?.reason,
+        error: json?.error || json?.message || json?.reason || (res.status === 403 ? 'Unauthorized: You do not have permission for this restaurant action.' : `Server returned error (${res.status})`),
+        ...(json || {})
       };
     }
 
