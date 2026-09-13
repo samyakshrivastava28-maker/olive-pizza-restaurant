@@ -632,20 +632,81 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
     set({ isRidersLoading: true });
 
     try {
+      let partnersFromColl: DeliveryPartner[] = [];
+      let partnersFromUsers: DeliveryPartner[] = [];
+
+      const mergeRiders = () => {
+        const combined = new Map<string, DeliveryPartner>();
+        partnersFromColl.forEach((p) => combined.set(p.id, p));
+        partnersFromUsers.forEach((u) => {
+          if (!combined.has(u.id)) combined.set(u.id, u);
+        });
+
+        const list = Array.from(combined.values()).filter((r) => {
+          const rBranch = r.branchId || 'main_branch';
+          return branchId === 'all' || rBranch === branchId;
+        });
+        set({ riders: list, isRidersLoading: false });
+      };
+
+      // 1. Listen to delivery_partners collection
+      const unsubDP = onSnapshot(
+        collection(db, 'delivery_partners'),
+        (snapshot) => {
+          const list: DeliveryPartner[] = [];
+          snapshot.forEach((docSnap) => {
+            const d = docSnap.data();
+            list.push({
+              id: docSnap.id,
+              name: d.name || d.displayName || 'Delivery Partner',
+              phone: d.phone || d.phoneNumber || '',
+              email: d.email || '',
+              isOnline: d.isOnline !== false && d.status !== 'offline',
+              status: d.status || (d.isOnline ? 'available' : 'offline'),
+              vehicleType: d.vehicleType || 'Scooty',
+              vehicleNumber: d.vehicleNumber || 'CG 08 AR 9000',
+              currentOrderId: d.currentOrderId || d.activeOrderId,
+              currentOrderNumber: d.currentOrderNumber,
+              currentLocation: (d.latitude !== undefined && d.longitude !== undefined) ? {
+                lat: Number(d.latitude),
+                lng: Number(d.longitude),
+                speed: d.speed || 0,
+                heading: d.heading || 0,
+                lastUpdated: d.updatedAt || new Date().toISOString()
+              } : d.location ? {
+                lat: d.location.lat || 21.0810244,
+                lng: d.location.lng || 81.0123793,
+                speed: d.location.speed || 0,
+                heading: d.location.heading || 0,
+                lastUpdated: d.location.lastUpdated || new Date().toISOString()
+              } : undefined,
+              lastSeen: d.lastSeen || d.updatedAt || new Date().toISOString(),
+              branchId: d.branchId || 'main_branch'
+            });
+          });
+          partnersFromColl = list;
+          mergeRiders();
+        },
+        (err) => {
+          console.warn('[ManagerStore] delivery_partners listener notice:', err);
+          set({ isRidersLoading: false });
+        }
+      );
+
+      // 2. Listen to users collection
       const usersRef = collection(db, 'users');
       const q = query(
         usersRef,
         where('role', 'in', ['delivery', 'delivery_partner'])
       );
 
-      ridersUnsub = onSnapshot(q, (snapshot) => {
-        const riderList: DeliveryPartner[] = [];
-        snapshot.forEach((docSnap) => {
-          const d = docSnap.data();
-          const riderBranch = d.branchId || 'main_branch';
-
-          if (riderBranch === branchId || branchId === 'all') {
-            riderList.push({
+      const unsubUsers = onSnapshot(
+        q,
+        (snapshot) => {
+          const list: DeliveryPartner[] = [];
+          snapshot.forEach((docSnap) => {
+            const d = docSnap.data();
+            list.push({
               id: docSnap.id,
               name: d.name || d.displayName || 'Rider',
               phone: d.phone || d.phoneNumber || '',
@@ -664,16 +725,22 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
                 lastUpdated: d.location.lastUpdated || new Date().toISOString()
               } : undefined,
               lastSeen: d.lastSeen || d.updatedAt || new Date().toISOString(),
-              branchId: riderBranch
+              branchId: d.branchId || 'main_branch'
             });
-          }
-        });
+          });
+          partnersFromUsers = list;
+          mergeRiders();
+        },
+        (err) => {
+          console.warn('[ManagerStore] users riders listener notice:', err);
+          set({ isRidersLoading: false });
+        }
+      );
 
-        set({ riders: riderList, isRidersLoading: false });
-      }, (err) => {
-        console.warn('[ManagerStore] Riders listener notice:', err);
-        set({ isRidersLoading: false });
-      });
+      ridersUnsub = () => {
+        unsubDP();
+        unsubUsers();
+      };
     } catch (err) {
       console.error('[ManagerStore] Error querying riders:', err);
       set({ isRidersLoading: false });
