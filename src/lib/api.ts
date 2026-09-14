@@ -62,6 +62,11 @@ export async function fetchApi<T = any>(endpoint: string, options: RequestInit =
     headers.set('X-App-Source', 'RESTAURANT_MANAGER');
   }
 
+  const managerDeviceId = localStorage.getItem('restaurant_device_id') || 'dev_rest_manager_01';
+  if (!headers.has('X-Device-Id')) {
+    headers.set('X-Device-Id', managerDeviceId);
+  }
+
   const token = await getCurrentAuthToken();
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`);
