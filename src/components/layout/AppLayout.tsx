@@ -6,6 +6,8 @@ import { useManagerStore } from '../../store/managerStore';
 import { AccessDeniedPage } from '../../pages/AccessDeniedPage';
 import { Pizza } from 'lucide-react';
 
+import PushNotificationManager from '../../services/PushNotificationManager';
+
 export const AppLayout: React.FC = () => {
   const { user, isAuthChecking, isAuthorized, restrictedReason } = useManagerStore();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -40,6 +42,7 @@ export const AppLayout: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#090d0b] text-[#e8eee9] flex flex-col font-sans">
+      <PushNotificationManager />
       <Sidebar 
         isOpen={isSidebarOpen} 
         onClose={() => setIsSidebarOpen(false)} 

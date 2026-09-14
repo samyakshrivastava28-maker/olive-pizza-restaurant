@@ -15,7 +15,6 @@ import { LoginPage } from './pages/LoginPage';
 import { InventoryManager } from './pages/InventoryManager';
 import { MenuManagementPage } from './pages/MenuManagementPage';
 
-import PushNotificationManager from './services/PushNotificationManager';
 import { AccessDeniedPage } from './pages/AccessDeniedPage';
 
 export function App() {
@@ -47,7 +46,6 @@ export function App() {
 
   return (
     <HashRouter>
-      <PushNotificationManager />
       <Toaster 
         position="top-right" 
         toastOptions={{

@@ -172,6 +172,7 @@ export interface ManagerAccount {
   role: 'restaurant_manager' | 'manager' | 'owner' | 'admin';
   branchId: string;
   branchName?: string;
+  franchiseId?: string;
   permissions: string[];
   isActive: boolean;
   createdAt?: string;

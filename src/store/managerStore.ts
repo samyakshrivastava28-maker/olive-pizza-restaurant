@@ -174,6 +174,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
               role: u.role as any,
               branchId: u.branchId || branchId,
               branchName: u.branchName || 'Olive Pizza — Rajnandgaon HQ',
+              franchiseId: u.franchiseId || 'fra_rajnandgaon',
               permissions: u.permissions || [],
               isActive: true
             };
@@ -200,6 +201,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
             const denialReason = resp?.reason || 'This account is not authorized to use this Olive Pizza application.';
             console.warn('[ManagerStore] Access restricted for account:', emailLower, denialReason);
 
+            SoundAlertEngine.stopAlarm();
             await signOut(auth).catch(() => {});
             localStorage.removeItem('restaurant_manager_profile');
             sessionStorage.clear();
@@ -217,6 +219,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         } catch (err: any) {
           console.error('[ManagerStore] Auth handshake network error:', err);
 
+          SoundAlertEngine.stopAlarm();
           await signOut(auth).catch(() => {});
           set({
             user: null,
@@ -229,6 +232,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
           });
         }
       } else {
+        SoundAlertEngine.stopAlarm();
         if (liveOrdersUnsub) {
           liveOrdersUnsub();
           liveOrdersUnsub = null;
@@ -278,6 +282,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
 
   logout: async () => {
     try {
+      SoundAlertEngine.stopAlarm();
       if (liveOrdersUnsub) liveOrdersUnsub();
       if (ridersUnsub) ridersUnsub();
       if (statusUnsub) { statusUnsub(); statusUnsub = null; }
@@ -305,13 +310,21 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
 
     try {
       const ordersRef = collection(db, 'orders');
-      // Subscribe to active orders (without compound query to prevent index/assertion glitches)
+      // Subscribe to active orders with strict franchise + branch isolation
       liveOrdersUnsub = onSnapshot(ordersRef, (snapshot) => {
+        const currentProfile = get().managerProfile;
+        const profileFranchiseId = currentProfile?.franchiseId;
         const activeList: Order[] = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data();
           const status = (data.status || 'pending').toLowerCase() as OrderStatus;
           const orderBranch = data.branchId || 'main_branch';
+          const orderFranchise = data.franchiseId;
+
+          // Strict Franchise Isolation: If order specifies a franchiseId and it doesn't match manager's franchiseId, ignore completely!
+          if (profileFranchiseId && orderFranchise && orderFranchise !== profileFranchiseId) {
+            return;
+          }
 
           // Branch filtering (match branch or 'all' or default main_branch)
           if (orderBranch === branchId || branchId === 'all' || (!data.branchId && branchId === 'main_branch')) {
@@ -437,12 +450,20 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         limit(150)
       );
       const snap = await getDocs(q);
+      const currentProfile = get().managerProfile;
+      const profileFranchiseId = currentProfile?.franchiseId;
       const pastList: Order[] = [];
 
       snap.forEach((docSnap) => {
         const data = docSnap.data();
         const status = (data.status || 'pending').toLowerCase() as OrderStatus;
         const orderBranch = data.branchId || 'main_branch';
+        const orderFranchise = data.franchiseId;
+
+        // Strict Franchise Isolation: If order specifies a franchiseId and it doesn't match manager's franchiseId, ignore
+        if (profileFranchiseId && orderFranchise && orderFranchise !== profileFranchiseId) {
+          return;
+        }
 
         if (orderBranch === branchId || branchId === 'all') {
           pastList.push({

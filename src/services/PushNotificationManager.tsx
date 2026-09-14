@@ -92,9 +92,23 @@ export default function PushNotificationManager() {
   // BroadcastChannel listener for Service Worker background alerts
   useEffect(() => {
     if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
+    if (!user || !managerProfile) return;
+
     const channel = new BroadcastChannel('olive_pizza_notifications');
     channel.onmessage = (event) => {
+      if (!user || !managerProfile) return;
       const data = event.data || {};
+
+      // Strict Franchise Isolation: Ignore alarms from other franchises
+      if (data.franchiseId && managerProfile.franchiseId && data.franchiseId !== managerProfile.franchiseId) {
+        return;
+      }
+      // Strict Branch Isolation: Ignore alarms from other branches
+      const effectiveBranch = activeBranchId || managerProfile.branchId || 'main_branch';
+      if (data.branchId && effectiveBranch !== 'all' && data.branchId !== effectiveBranch) {
+        return;
+      }
+
       if (data.type === 'START_ALERT') {
         const orderId = data.orderId;
         const dedupKey = `NEW_ORDER:${orderId || Date.now()}`;
@@ -114,7 +128,7 @@ export default function PushNotificationManager() {
     return () => {
       channel.close();
     };
-  }, []);
+  }, [user, managerProfile, activeBranchId]);
 
   // 2. Token Registration (Idempotent, role & branch scoped)
   const registerToken = useCallback(async () => {
@@ -320,8 +334,12 @@ export default function PushNotificationManager() {
 
   // 4. Realtime Listener for New Orders in this branch
   useEffect(() => {
-    if (!user || !managerProfile) return;
+    if (!user || !managerProfile) {
+      SoundAlertEngine.stopAlarm();
+      return;
+    }
     const branchId = activeBranchId || managerProfile.branchId || 'main_branch';
+    const profileFranchiseId = managerProfile.franchiseId;
 
     const q = query(
       collection(db, 'orders'),
@@ -333,6 +351,12 @@ export default function PushNotificationManager() {
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const order = { id: change.doc.id, ...change.doc.data() } as any;
+
+          // Strict Franchise Isolation: Ignore alarms from other franchises
+          if (profileFranchiseId && order.franchiseId && order.franchiseId !== profileFranchiseId) {
+            return;
+          }
+
           const eventId = `NEW_ORDER:${order.id}`;
 
           // Check deduplication
@@ -357,7 +381,10 @@ export default function PushNotificationManager() {
       console.warn('[Restaurant PushManager] Realtime listener error:', err);
     });
 
-    return () => unsubscribe();
+    return () => {
+      SoundAlertEngine.stopAlarm();
+      unsubscribe();
+    };
   }, [user, managerProfile, activeBranchId]);
 
   const handleDismissOrderAlert = () => {
@@ -402,6 +429,10 @@ export default function PushNotificationManager() {
     setNewOrderAlert(null);
     navigate(`/live-orders?orderId=${encodeURIComponent(orderId)}`);
   };
+
+  if (!user || !managerProfile) {
+    return null;
+  }
 
   return (
     <>
