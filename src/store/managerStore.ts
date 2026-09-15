@@ -309,16 +309,26 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
     set({ isOrdersLoading: true });
 
     try {
-      const ordersRef = collection(db, 'orders');
-      // Subscribe to active orders with strict franchise + branch isolation
-      liveOrdersUnsub = onSnapshot(ordersRef, (snapshot) => {
+      // Authoritative Server-side Scoped Query (Section 1c)
+      // Query MUST be scoped at the Firestore query level to manager's own branchId
+      const targetBranchId = (!branchId || branchId === 'all') 
+        ? (get().managerProfile?.branchId || 'main_branch')
+        : branchId;
+
+      const scopedQuery = query(
+        collection(db, 'orders'),
+        where('branchId', '==', targetBranchId)
+      );
+
+      // Subscribe to active orders with strict branch query scoping
+      liveOrdersUnsub = onSnapshot(scopedQuery, (snapshot) => {
         const currentProfile = get().managerProfile;
         const profileFranchiseId = currentProfile?.franchiseId;
         const activeList: Order[] = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data();
           const status = (data.status || 'pending').toLowerCase() as OrderStatus;
-          const orderBranch = data.branchId || 'main_branch';
+          const orderBranch = data.branchId || targetBranchId;
           const orderFranchise = data.franchiseId;
 
           // Strict Franchise Isolation: If order specifies a franchiseId and it doesn't match manager's franchiseId, ignore completely!
@@ -326,9 +336,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
             return;
           }
 
-          // Branch filtering (match branch or 'all' or default main_branch)
-          if (orderBranch === branchId || branchId === 'all' || (!data.branchId && branchId === 'main_branch')) {
-            if (ACTIVE_ORDER_STATUSES.includes(status)) {
+          if (ACTIVE_ORDER_STATUSES.includes(status)) {
               let createdDate = new Date();
               if (data.createdAt instanceof Timestamp) {
                 createdDate = data.createdAt.toDate();
@@ -391,8 +399,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
                 updatedAt: updatedDate,
               });
             }
-          }
-        });
+          });
 
         // Detect modified orders that became 'delivered' to play single-shot chime
         snapshot.docChanges().forEach((change) => {
