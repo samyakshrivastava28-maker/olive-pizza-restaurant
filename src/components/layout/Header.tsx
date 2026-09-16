@@ -7,9 +7,12 @@ import {
   LogOut,
   User,
   ArrowLeft,
-  ShieldCheck
+  ShieldCheck,
+  Bell,
+  BellOff
 } from 'lucide-react';
 import { useManagerStore } from '../../store/managerStore';
+import { deviceAlarmService } from '../../services/DeviceAlarmService';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -24,6 +27,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     userRole,
     logout 
   } = useManagerStore();
+
+  const [alarmEnabled, setAlarmEnabled] = React.useState(() => deviceAlarmService.isAlarmEnabled());
+
+  React.useEffect(() => {
+    return deviceAlarmService.subscribe((enabled) => setAlarmEnabled(enabled));
+  }, []);
 
   const branches = [
     { id: 'main_branch', name: 'Olive Pizza — Rajnandgaon' },
@@ -87,6 +96,24 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
       {/* Right: Live Sync Pulse & Profile */}
       <div className="flex items-center gap-3">
+        {/* Device Alarm Toggle */}
+        <button
+          onClick={() => {
+            const next = !alarmEnabled;
+            deviceAlarmService.setAlarmEnabled(next);
+            setAlarmEnabled(next);
+          }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${
+            alarmEnabled 
+              ? 'bg-[#141b16] border-[#57854d]/50 text-emerald-400 hover:bg-[#1a231d]' 
+              : 'bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20'
+          }`}
+          title="Toggle Order Alarm on this device"
+        >
+          {alarmEnabled ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
+          <span>Alarm: {alarmEnabled ? 'ON' : 'OFF'}</span>
+        </button>
+
         {/* Real-time sync badge */}
         <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#10b981]/10 border border-[#10b981]/20 text-[11px] text-[#10b981] font-semibold">
           <Radio className="w-3.5 h-3.5 animate-pulse" />

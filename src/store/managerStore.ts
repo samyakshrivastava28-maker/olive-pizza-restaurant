@@ -16,6 +16,7 @@ import { db, auth } from '../lib/firebase';
 import { fetchApi } from '../lib/api';
 import { SoundAlertEngine } from '../lib/SoundAlertEngine';
 import { NotificationDeduplicator } from '../lib/NotificationDeduplicator';
+import { deviceAlarmService } from '../services/DeviceAlarmService';
 import type { 
   Order, 
   OrderStatus, 
@@ -420,7 +421,12 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
 
         // Continuous sound alarm: loop while there are unaccepted/pending orders
         const pendingCount = activeList.filter((o) => o.status === 'pending' || o.status === 'pending_acceptance').length;
-        if (pendingCount > 0) {
+        const currentStatus = get().restaurantStatus;
+        const isRestaurantOpen = currentStatus ? (currentStatus.isOpen !== false && currentStatus.acceptingOrders !== false) : true;
+        const isAlarmEnabled = deviceAlarmService.isAlarmEnabled();
+
+        // Guarantees alarm NEVER sounds when restaurant is closed or device alarm is disabled
+        if (pendingCount > 0 && isRestaurantOpen && isAlarmEnabled) {
           SoundAlertEngine.startContinuousAlarm('new_order');
         } else {
           SoundAlertEngine.stopAlarm();
@@ -591,10 +597,15 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       statusUnsub = onSnapshot(docRef, (snap) => {
         if (snap.exists()) {
           const data = snap.data();
+          const isOpen = data.isOpen !== false;
+          const acceptingOrders = data.acceptingOrders !== false;
+          if (!isOpen || !acceptingOrders) {
+            SoundAlertEngine.stopAlarm();
+          }
           set({
             restaurantStatus: {
-              isOpen: data.isOpen !== false,
-              acceptingOrders: data.acceptingOrders !== false,
+              isOpen,
+              acceptingOrders,
               closeReason: data.closeReason || '',
               operatingHours: data.operatingHours || {},
               updatedAt: data.updatedAt,
@@ -643,6 +654,10 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
           closeReason: reason || (isOpen ? '' : 'Manually paused by manager')
         })
       });
+
+      if (!isOpen) {
+        SoundAlertEngine.stopAlarm();
+      }
 
       if (res && (res.success || (res as any).status === 200)) {
         set((state) => ({
