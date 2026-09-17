@@ -347,7 +347,15 @@ export default function PushNotificationManager() {
       where('status', 'in', ['pending', 'pending_acceptance'])
     );
 
+    let isInitialSnapshot = true;
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (isInitialSnapshot) {
+        isInitialSnapshot = false;
+        snapshot.docs.forEach((doc) => {
+          NotificationDeduplicator.record(`NEW_ORDER:${doc.id}`);
+        });
+        return;
+      }
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const order = { id: change.doc.id, ...change.doc.data() } as any;

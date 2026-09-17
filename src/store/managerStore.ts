@@ -419,8 +419,13 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         activeList.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
         set({ liveOrders: activeList, isOrdersLoading: false });
 
-        // Continuous sound alarm: loop while there are unaccepted/pending orders
-        const pendingCount = activeList.filter((o) => o.status === 'pending' || o.status === 'pending_acceptance').length;
+        // Continuous sound alarm: loop only for active unaccepted/pending orders placed within the last 10 minutes
+        const now = Date.now();
+        const pendingCount = activeList.filter((o) => {
+          if (o.status !== 'pending' && o.status !== 'pending_acceptance') return false;
+          const orderTime = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+          return orderTime > 0 && (now - orderTime < 10 * 60 * 1000);
+        }).length;
         const currentStatus = get().restaurantStatus;
         const isRestaurantOpen = currentStatus ? (currentStatus.isOpen !== false && currentStatus.acceptingOrders !== false) : true;
         const isAlarmEnabled = deviceAlarmService.isAlarmEnabled();
