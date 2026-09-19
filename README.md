@@ -55,6 +55,10 @@
 * **Global Owner Mode**: When accessed by Global Owners (`olivepizzarjn@gmail.com`, `webhub2811@gmail.com`), renders a top-bar branch switcher allowing instant context switching between restaurant outlets.
 * **Strict Staff Isolation**: Regular branch managers and kitchen staff are locked strictly to their assigned branch.
 
+### ⚡ 6. Event-Driven Ticket Lifecycle & Scoped Dispatches
+* **12 Domain Events Integration**: Advances orders through the canonical domain event bus (`order.accepted`, `order.preparing`, `order.ready`).
+* **Strict Notification Boundary**: Operational notifications and kitchen dispatch alerts are strictly routed to branch staff; customer accounts are prevented from receiving internal kitchen alarms.
+
 ---
 
 ## 🏗️ Technical Architecture & Stack
