@@ -333,27 +333,38 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
           const orderFranchise = data.franchiseId;
 
           // Strict Franchise Isolation: If order specifies a franchiseId and it doesn't match manager's franchiseId, ignore completely!
-          if (profileFranchiseId && orderFranchise && orderFranchise !== profileFranchiseId) {
+          const normF = (id?: string) => (id || '').trim().toLowerCase().replace(/^fra_/, '');
+          if (profileFranchiseId && orderFranchise && normF(orderFranchise) !== normF(profileFranchiseId) && profileFranchiseId !== 'all') {
             return;
           }
 
           if (ACTIVE_ORDER_STATUSES.includes(status)) {
               let createdDate = new Date();
-              if (data.createdAt instanceof Timestamp) {
+              if (data.createdAt && typeof data.createdAt.toDate === 'function') {
                 createdDate = data.createdAt.toDate();
-              } else if (data.createdAt?._seconds) {
+              } else if (data.createdAt instanceof Timestamp) {
+                createdDate = data.createdAt.toDate();
+              } else if (typeof data.createdAt?._seconds === 'number') {
                 createdDate = new Date(data.createdAt._seconds * 1000);
+              } else if (typeof data.createdAt?.seconds === 'number') {
+                createdDate = new Date(data.createdAt.seconds * 1000);
               } else if (data.createdAt) {
-                createdDate = new Date(data.createdAt);
+                const parsed = new Date(data.createdAt);
+                createdDate = isNaN(parsed.getTime()) ? new Date() : parsed;
               }
 
               let updatedDate = createdDate;
-              if (data.updatedAt instanceof Timestamp) {
+              if (data.updatedAt && typeof data.updatedAt.toDate === 'function') {
                 updatedDate = data.updatedAt.toDate();
-              } else if (data.updatedAt?._seconds) {
+              } else if (data.updatedAt instanceof Timestamp) {
+                updatedDate = data.updatedAt.toDate();
+              } else if (typeof data.updatedAt?._seconds === 'number') {
                 updatedDate = new Date(data.updatedAt._seconds * 1000);
+              } else if (typeof data.updatedAt?.seconds === 'number') {
+                updatedDate = new Date(data.updatedAt.seconds * 1000);
               } else if (data.updatedAt) {
-                updatedDate = new Date(data.updatedAt);
+                const parsed = new Date(data.updatedAt);
+                updatedDate = isNaN(parsed.getTime()) ? createdDate : parsed;
               }
 
               activeList.push({
@@ -419,12 +430,12 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         activeList.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
         set({ liveOrders: activeList, isOrdersLoading: false });
 
-        // Continuous sound alarm: loop only for active unaccepted/pending orders placed within the last 10 minutes
+        // Continuous sound alarm: loop only for active unaccepted/pending orders placed within the last 15 minutes
         const now = Date.now();
         const pendingCount = activeList.filter((o) => {
           if (o.status !== 'pending' && o.status !== 'pending_acceptance') return false;
-          const orderTime = o.createdAt ? new Date(o.createdAt).getTime() : 0;
-          return orderTime > 0 && (now - orderTime < 10 * 60 * 1000);
+          const orderTime = o.createdAt instanceof Date ? o.createdAt.getTime() : (o.createdAt ? new Date(o.createdAt).getTime() : 0);
+          return !isNaN(orderTime) && orderTime > 0 && (now - orderTime < 15 * 60 * 1000);
         }).length;
         const currentStatus = get().restaurantStatus;
         const isRestaurantOpen = currentStatus ? (currentStatus.isOpen !== false && currentStatus.acceptingOrders !== false) : true;
