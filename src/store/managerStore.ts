@@ -119,8 +119,8 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   restrictedReason: null,
   restrictedEmail: null,
   clearRestricted: () => set({ restrictedReason: null, restrictedEmail: null }),
-  activeBranchId: 'main_branch',
-  activeBranchName: 'Olive Pizza — Rajnandgaon (Main)',
+  activeBranchId: '',
+  activeBranchName: '',
   permissions: [
     'dashboard.view',
     'orders.live',
@@ -157,7 +157,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       clearTimeout(safetyTimer);
       if (currentUser) {
         const emailLower = (currentUser.email || '').toLowerCase().trim();
-        const branchId = get().activeBranchId || 'main_branch';
+        const branchId = get().activeBranchId || undefined;
 
         try {
           const resp = await fetchApi<any>('/api/auth/authorize-app', {
@@ -175,9 +175,9 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
               name: u.name || currentUser.displayName || emailLower.split('@')[0] || 'Restaurant Manager',
               email: currentUser.email || '',
               role: u.role as any,
-              branchId: u.branchId || branchId,
-              branchName: u.branchName || 'Olive Pizza — Rajnandgaon HQ',
-              franchiseId: u.franchiseId || 'fra_rajnandgaon',
+              branchId: u.branchId || '',
+              branchName: u.branchName || 'Assigned Branch',
+              franchiseId: u.franchiseId || '',
               permissions: u.permissions || [],
               isActive: true
             };
@@ -308,7 +308,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   setActiveBranch: (branchId, branchName) => {
     set({
       activeBranchId: branchId,
-      activeBranchName: branchName || (branchId === 'main_branch' ? 'Olive Pizza — Rajnandgaon (Main)' : `Branch ${branchId}`)
+      activeBranchName: branchName || (branchId ? `Branch ${branchId}` : '')
     });
     get().subscribeToLiveOrders(branchId);
     get().subscribeToRiders(branchId);
@@ -324,7 +324,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       // Authoritative Server-side Scoped Query (Section 1c)
       // Query MUST be scoped at the Firestore query level to manager's own branchId
       const targetBranchId = (!branchId || branchId === 'all') 
-        ? (get().managerProfile?.branchId || 'main_branch')
+        ? (get().managerProfile?.branchId || '')
         : branchId;
 
       const scopedQuery = query(
@@ -497,7 +497,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       snap.forEach((docSnap) => {
         const data = docSnap.data();
         const status = (data.status || 'pending').toLowerCase() as OrderStatus;
-        const orderBranch = data.branchId || 'main_branch';
+        const orderBranch = data.branchId || '';
         const orderFranchise = data.franchiseId;
 
         // Strict Franchise Isolation: If order specifies a franchiseId and it doesn't match manager's franchiseId, ignore
@@ -620,7 +620,11 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
     set({ isStatusLoading: true });
 
     try {
-      const docRef = doc(db, 'restaurant_settings', branchId || 'main_branch');
+      if (!branchId) {
+        set({ isStatusLoading: false });
+        return () => {};
+      }
+      const docRef = doc(db, 'restaurant_settings', branchId);
       statusUnsub = onSnapshot(docRef, (snap) => {
         if (snap.exists()) {
           const data = snap.data();
@@ -727,7 +731,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         });
 
         const list = Array.from(combined.values()).filter((r) => {
-          const rBranch = r.branchId || 'main_branch';
+          const rBranch = r.branchId || '';
           return branchId === 'all' || rBranch === branchId;
         });
         set({ riders: list, isRidersLoading: false });
@@ -765,7 +769,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
                 lastUpdated: d.location.lastUpdated || new Date().toISOString()
               } : undefined,
               lastSeen: d.lastSeen || d.updatedAt || new Date().toISOString(),
-              branchId: d.branchId || 'main_branch'
+              branchId: d.branchId || ''
             });
           });
           partnersFromColl = list;
@@ -809,7 +813,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
                 lastUpdated: d.location.lastUpdated || new Date().toISOString()
               } : undefined,
               lastSeen: d.lastSeen || d.updatedAt || new Date().toISOString(),
-              branchId: d.branchId || 'main_branch'
+              branchId: d.branchId || ''
             });
           });
           partnersFromUsers = list;

@@ -15,7 +15,7 @@ import toast from 'react-hot-toast';
 
 export const MenuManagementPage: React.FC = () => {
   const { managerProfile } = useManagerStore();
-  const branchId = managerProfile?.branchId || 'main_branch';
+  const branchId = managerProfile?.branchId || '';
   const branchName = managerProfile?.branchName || 'Rajnandgaon (HQ)';
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);

@@ -34,9 +34,9 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     return deviceAlarmService.subscribe((enabled) => setAlarmEnabled(enabled));
   }, []);
 
-  const branches = [
-    { id: 'main_branch', name: 'Olive Pizza — Rajnandgaon' },
-  ];
+  const branches = managerProfile?.branchId ? [
+    { id: managerProfile.branchId, name: managerProfile.branchName || activeBranchName || 'Assigned Branch' },
+  ] : (activeBranchId ? [{ id: activeBranchId, name: activeBranchName || 'Assigned Branch' }] : []);
 
   const isGlobalOwner = userRole === 'owner' || 
     managerProfile?.email === 'olivepizzarjn@gmail.com' || 

@@ -60,7 +60,7 @@ export function InventoryManager() {
   const loadInventory = async () => {
     setLoading(true);
     try {
-      const res = await fetchApi(`/api/inventory?branchId=${activeBranchId || 'main_branch'}`);
+      const res = await fetchApi(`/api/inventory?branchId=${activeBranchId || ''}`);
       const data = await res.json();
       if (data.items) {
         setItems(data.items);
@@ -96,7 +96,7 @@ export function InventoryManager() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           itemId: selectedItem.id,
-          branchId: activeBranchId || 'main_branch',
+          branchId: activeBranchId || '',
           adjustmentType: adjustType,
           quantityChanged: delta,
           reason: adjustReason,
@@ -142,7 +142,7 @@ export function InventoryManager() {
           currentQuantity: Number(newItem.currentQuantity) || 0,
           minThreshold: Number(newItem.minThreshold) || 10,
           costPerUnit: Number(newItem.costPerUnit) || 0,
-          branchId: activeBranchId || 'main_branch',
+          branchId: activeBranchId || '',
         }),
       });
 

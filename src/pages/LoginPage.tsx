@@ -73,7 +73,7 @@ export const LoginPage: React.FC = () => {
         name: u.name || user.displayName || emailLower.split('@')[0] || 'Restaurant Manager',
         email: user.email || '',
         role: u.role as any,
-        branchId: u.branchId || 'main_branch',
+        branchId: u.branchId || '',
         branchName: u.branchName || 'Olive Pizza — Rajnandgaon HQ',
         permissions: u.permissions || [],
         isActive: true
@@ -83,7 +83,7 @@ export const LoginPage: React.FC = () => {
       isAuthChecking: false,
       restrictedReason: null,
       restrictedEmail: null,
-      activeBranchId: u.branchId || 'main_branch',
+      activeBranchId: u.branchId || '',
       activeBranchName: u.branchName || 'Olive Pizza — Rajnandgaon HQ',
       permissions: u.permissions || []
     });
@@ -110,7 +110,7 @@ export const LoginPage: React.FC = () => {
         method: 'POST',
         body: JSON.stringify({
           targetApp: 'RESTAURANT_MANAGER',
-          requestedBranchId: 'main_branch'
+          requestedBranchId: undefined
         })
       });
 

@@ -150,7 +150,7 @@ export default function PushNotificationManager() {
         return;
       }
       // Strict Branch Isolation: Ignore alarms from other branches
-      const effectiveBranch = activeBranchId || managerProfile.branchId || 'main_branch';
+      const effectiveBranch = activeBranchId || managerProfile.branchId || '';
       if (data.branchId && effectiveBranch !== 'all' && data.branchId !== effectiveBranch) {
         return;
       }
@@ -193,8 +193,8 @@ export default function PushNotificationManager() {
             deviceName: 'Restaurant Management Desktop (Electron)',
             appName: 'restaurant',
             role: 'restaurant_manager',
-            branchId: activeBranchId || managerProfile?.branchId || 'main_branch',
-            franchiseId: managerProfile?.franchiseId || 'fra_rajnandgaon'
+            branchId: activeBranchId || managerProfile?.branchId || '',
+            franchiseId: managerProfile?.franchiseId || ''
           })
         });
         registeredTokenRef.current = electronToken;
@@ -227,8 +227,8 @@ export default function PushNotificationManager() {
                 deviceName: `${Capacitor.getPlatform().toUpperCase()} Kitchen Terminal`,
                 appName: 'restaurant',
                 role: 'restaurant_manager',
-                branchId: activeBranchId || managerProfile?.branchId || 'main_branch',
-                franchiseId: managerProfile?.franchiseId || 'fra_rajnandgaon'
+                branchId: activeBranchId || managerProfile?.branchId || '',
+                franchiseId: managerProfile?.franchiseId || ''
               })
             }).catch(() => {});
             registeredTokenRef.current = pushToken.value;
@@ -320,8 +320,8 @@ export default function PushNotificationManager() {
                 deviceName: navigator.platform || 'Web Browser',
                 appName: 'restaurant',
                 role: 'restaurant_manager',
-                branchId: activeBranchId || managerProfile?.branchId || 'main_branch',
-                franchiseId: managerProfile?.franchiseId || 'fra_rajnandgaon'
+                branchId: activeBranchId || managerProfile?.branchId || '',
+                franchiseId: managerProfile?.franchiseId || ''
               })
             });
             registeredTokenRef.current = currentToken;
@@ -390,7 +390,7 @@ export default function PushNotificationManager() {
       SoundAlertEngine.stopAlarm();
       return;
     }
-    const branchId = activeBranchId || managerProfile.branchId || 'main_branch';
+    const branchId = activeBranchId || managerProfile.branchId || '';
     const profileFranchiseId = managerProfile.franchiseId;
 
     const q = query(
@@ -451,8 +451,8 @@ export default function PushNotificationManager() {
   // 4b. Resilient WebSocket listener with Monotonic Sequence Sync for dropped Wi-Fi
   useEffect(() => {
     if (!user || !managerProfile) return;
-    const branchId = activeBranchId || managerProfile.branchId || 'main_branch';
-    const franchiseId = managerProfile.franchiseId || 'fra_rajnandgaon';
+    const branchId = activeBranchId || managerProfile.branchId || '';
+    const franchiseId = managerProfile.franchiseId || '';
     let ws: WebSocket | null = null;
     let reconnectTimeout: any = null;
     let isDisposed = false;
