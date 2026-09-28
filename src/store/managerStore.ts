@@ -33,6 +33,7 @@ interface ManagerState {
   userRole: string | null;
   isAuthChecking: boolean;
   isAuthorized: boolean;
+  authStatus?: 'APPROVED' | 'PENDING_OWNER_APPROVAL' | 'ACCOUNT_REJECTED' | 'ACCOUNT_DEACTIVATED' | null;
   restrictedReason: string | null;
   restrictedEmail: string | null;
   clearRestricted: () => void;
@@ -114,6 +115,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   userRole: null,
   isAuthChecking: true,
   isAuthorized: false,
+  authStatus: null,
   restrictedReason: null,
   restrictedEmail: null,
   clearRestricted: () => set({ restrictedReason: null, restrictedEmail: null }),
@@ -185,6 +187,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
               managerProfile: profile,
               userRole: u.role,
               isAuthorized: true,
+              authStatus: 'APPROVED',
               isAuthChecking: false,
               restrictedReason: null,
               restrictedEmail: null,
@@ -198,21 +201,29 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
             get().fetchHistoricalOrders();
             return;
           } else {
-            // Explicitly unauthorized account — wipe session and enforce immediate sign out
+            // Account not authorized for dashboard access
             const denialReason = resp?.reason || 'This account is not authorized to use this Olive Pizza application.';
-            console.warn('[ManagerStore] Access restricted for account:', emailLower, denialReason);
+            const code = resp?.code || 'UNAUTHORIZED';
+            console.warn('[ManagerStore] Access restricted for account:', emailLower, code, denialReason);
 
             SoundAlertEngine.stopAlarm();
-            await signOut(auth).catch(() => {});
+
+            // If pending approval, KEEP Firebase session so the user can see their pending status and refresh
+            const isPending = code === 'PENDING_OWNER_APPROVAL';
+            if (!isPending) {
+              await signOut(auth).catch(() => {});
+            }
+
             localStorage.removeItem('restaurant_manager_profile');
             sessionStorage.clear();
 
             set({
-              user: null,
+              user: isPending ? currentUser : null,
               managerProfile: null,
               userRole: null,
               isAuthorized: false,
               isAuthChecking: false,
+              authStatus: isPending ? 'PENDING_OWNER_APPROVAL' : code === 'ACCOUNT_REJECTED' ? 'ACCOUNT_REJECTED' : code === 'ACCOUNT_DEACTIVATED' ? 'ACCOUNT_DEACTIVATED' : null,
               restrictedReason: denialReason,
               restrictedEmail: emailLower
             });
@@ -221,14 +232,14 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
           console.error('[ManagerStore] Auth handshake network error:', err);
 
           SoundAlertEngine.stopAlarm();
-          await signOut(auth).catch(() => {});
           set({
-            user: null,
+            user: currentUser,
             managerProfile: null,
             userRole: null,
             isAuthorized: false,
             isAuthChecking: false,
-            restrictedReason: err?.message || 'Authorization service unavailable. Please check your network.',
+            authStatus: null,
+            restrictedReason: err?.message || 'Authorization service unavailable. Please check your network and retry.',
             restrictedEmail: emailLower
           });
         }
