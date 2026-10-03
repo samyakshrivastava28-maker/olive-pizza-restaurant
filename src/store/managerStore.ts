@@ -751,21 +751,21 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
               email: d.email || '',
               isOnline: d.isOnline !== false && d.status !== 'offline',
               status: d.status || (d.isOnline ? 'available' : 'offline'),
-              vehicleType: d.vehicleType || 'Scooty',
-              vehicleNumber: d.vehicleNumber || 'CG 08 AR 9000',
+              vehicleType: d.vehicleType || 'Scooter',
+              vehicleNumber: d.vehicleNumber || '',
               currentOrderId: d.currentOrderId || d.activeOrderId,
               currentOrderNumber: d.currentOrderNumber,
-              currentLocation: (d.latitude !== undefined && d.longitude !== undefined) ? {
+              currentLocation: (d.latitude !== undefined && d.longitude !== undefined && !isNaN(Number(d.latitude)) && !isNaN(Number(d.longitude))) ? {
                 lat: Number(d.latitude),
                 lng: Number(d.longitude),
-                speed: d.speed || 0,
-                heading: d.heading || 0,
+                speed: Number(d.speed) || 0,
+                heading: Number(d.heading) || 0,
                 lastUpdated: d.updatedAt || new Date().toISOString()
-              } : d.location ? {
-                lat: d.location.lat || 21.0810244,
-                lng: d.location.lng || 81.0123793,
-                speed: d.location.speed || 0,
-                heading: d.location.heading || 0,
+              } : (d.location && d.location.lat !== undefined && d.location.lng !== undefined && !isNaN(Number(d.location.lat)) && !isNaN(Number(d.location.lng))) ? {
+                lat: Number(d.location.lat),
+                lng: Number(d.location.lng),
+                speed: Number(d.location.speed) || 0,
+                heading: Number(d.location.heading) || 0,
                 lastUpdated: d.location.lastUpdated || new Date().toISOString()
               } : undefined,
               lastSeen: d.lastSeen || d.updatedAt || new Date().toISOString(),
@@ -801,15 +801,21 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
               email: d.email || '',
               isOnline: d.isOnline !== false,
               status: d.status || (d.isOnline ? 'available' : 'offline'),
-              vehicleType: d.vehicleType || 'Bike',
-              vehicleNumber: d.vehicleNumber || 'CG 08 XX 0000',
+              vehicleType: d.vehicleType || 'Scooter',
+              vehicleNumber: d.vehicleNumber || '',
               currentOrderId: d.currentOrderId,
               currentOrderNumber: d.currentOrderNumber,
-              currentLocation: d.location ? {
-                lat: d.location.lat || 21.0810244,
-                lng: d.location.lng || 81.0123793,
-                speed: d.location.speed || 0,
-                heading: d.location.heading || 0,
+              currentLocation: (d.latitude !== undefined && d.longitude !== undefined && !isNaN(Number(d.latitude)) && !isNaN(Number(d.longitude))) ? {
+                lat: Number(d.latitude),
+                lng: Number(d.longitude),
+                speed: Number(d.speed) || 0,
+                heading: Number(d.heading) || 0,
+                lastUpdated: d.updatedAt || new Date().toISOString()
+              } : (d.location && d.location.lat !== undefined && d.location.lng !== undefined && !isNaN(Number(d.location.lat)) && !isNaN(Number(d.location.lng))) ? {
+                lat: Number(d.location.lat),
+                lng: Number(d.location.lng),
+                speed: Number(d.location.speed) || 0,
+                heading: Number(d.location.heading) || 0,
                 lastUpdated: d.location.lastUpdated || new Date().toISOString()
               } : undefined,
               lastSeen: d.lastSeen || d.updatedAt || new Date().toISOString(),
