@@ -27,7 +27,7 @@
   - Customer special instructions callout box.
 * **Actionable Controls**:
   - `ACCEPT ORDER`: Claims order, marks status as preparing, silences audio alarm.
-  - `SILENCE ALARM / ACKNOWLEDGE`: Calls `/api/orders/:id/acknowledge`, stops sound without changing order status.
+  - `SILENCE ALARM / ACKNOWLEDGE`: Stops sound without changing order status.
   - `REJECT ORDER`: Logs refusal with reason and notifies customer.
   - `VIEW ORDER`: Navigates to full order inspection view.
 * **Continuous Audio Alarms**: Looping audio alert (`new_order.mp3`) that persists until kitchen staff acknowledge or accept the ticket.
@@ -37,7 +37,7 @@
 * **Branch-Scoped Registration**: Automatically registers branch credentials (`register_branch`) upon connection.
 * **Zero-Loss Reconnection Sync**:
   - Tracks incoming events with monotonic sequence numbers (`lastSequence`).
-  - If kitchen Wi-Fi drops, sends `sync_request` upon reconnection to instantly retrieve and replay all missed tickets.
+  - If kitchen Wi-Fi drops, sends `sync_request` upon reconnection to instantly retrieve and replay all missed tickets from the server's 200-event ring buffer.
 
 ### 📋 3. Live KDS Order Queue (`LiveOrdersPage.tsx`)
 * **Kanban Workflow**: Organizes active tickets across 4 distinct stages:
@@ -47,17 +47,16 @@
   4. `out_for_delivery` (Handed over to rider)
 * **1-Click Transitions**: Fast touch-optimized buttons to advance orders through each preparation stage.
 
-### 📦 4. Kitchen Inventory & Fleet Dispatch
-* **Ingredient Tracking**: Real-time stock counts for pizza dough, cheese, sauces, toppings, and packaging boxes with automated low-stock warnings.
-* **Delivery Fleet Radar**: Interactive live radar map showing available delivery riders and dispatch assignment controls.
+### 🛵 4. Live Fleet Radar & Telemetry Accuracy
+* **Zero Fake Coordinates**: Displays verified real-time coordinates sourced from the Supabase live GPS database via the backend. If telemetry is unavailable, cleanly renders "Location unavailable" rather than mock coordinates.
+* **Driver Availability**: Tracks live rider online/offline state, assigned deliveries, and current battery/speed telemetry.
 
-### 🏢 5. Branch Context Switching
+### 📦 5. Kitchen Inventory Management
+* **Ingredient Tracking**: Real-time stock counts for pizza dough, cheese, sauces, toppings, and packaging boxes with automated low-stock warnings.
+
+### 🏢 6. Branch Context Switching & Strict Isolation
 * **Global Owner Mode**: When accessed by Global Owners (`olivepizzarjn@gmail.com`, `webhub2811@gmail.com`), renders a top-bar branch switcher allowing instant context switching between restaurant outlets.
 * **Strict Staff Isolation**: Regular branch managers and kitchen staff are locked strictly to their assigned branch.
-
-### ⚡ 6. Event-Driven Ticket Lifecycle & Scoped Dispatches
-* **12 Domain Events Integration**: Advances orders through the canonical domain event bus (`order.accepted`, `order.preparing`, `order.ready`).
-* **Strict Notification Boundary**: Operational notifications and kitchen dispatch alerts are strictly routed to branch staff; customer accounts are prevented from receiving internal kitchen alarms.
 
 ---
 
@@ -84,46 +83,17 @@ cd "Olive Pizza restaurant manager"
 npm install
 ```
 
-### 3. Environment Configuration
-Create a `.env` file in the project root:
-```env
-VITE_API_URL=http://localhost:5000
-VITE_WS_URL=ws://localhost:5000/ws
-VITE_FIREBASE_API_KEY=your_firebase_api_key
-VITE_FIREBASE_AUTH_DOMAIN=olive-pizza-08.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=olive-pizza-08
-VITE_FIREBASE_STORAGE_BUCKET=olive-pizza-08.appspot.com
-VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-VITE_FIREBASE_APP_ID=your_app_id
-```
-
-### 4. Running Locally
+### 3. Running Locally
 ```bash
 # Start Vite web dev server on port 5176
 npm run dev
 
-# Or start Electron desktop application in development
+# Or start Electron desktop application
 npm run desktop
-```
-
-### 5. Building for Production
-
-```bash
-# Web application build
-npm run build
-
-# Windows desktop installer (.exe)
-npm run build:win
-
-# macOS desktop installer (.dmg)
-npm run build:mac
-
-# Android / iOS Capacitor sync
-npx cap sync
 ```
 
 ---
 
-## 📄 License
+## 📜 License
 
-Proprietary Software — All rights reserved by **Olive Pizza**, Rajnandgaon, Chhattisgarh, India.
+Proprietary © Olive Pizza. All rights reserved.
