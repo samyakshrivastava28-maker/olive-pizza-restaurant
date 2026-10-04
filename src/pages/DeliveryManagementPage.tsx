@@ -9,27 +9,42 @@ import {
   Radio
 } from 'lucide-react';
 import { useManagerStore } from '../store/managerStore';
-import type { DeliveryPartner, Order } from '../types/restaurant';
+import { useLiveRiderStore } from '../store/liveRiderStore';
+import type { Order } from '../types/restaurant';
 import { formatDistanceToNow } from 'date-fns';
 import { FleetLiveMap } from '../components/delivery/FleetLiveMap';
 
 export const DeliveryManagementPage: React.FC = () => {
   const { 
-    riders, 
     liveOrders, 
-    activeBranchName, 
-    isRidersLoading 
+    activeBranchName
   } = useManagerStore();
 
-  const [selectedRider, setSelectedRider] = useState<DeliveryPartner | null>(null);
+  const { 
+    riders: fleetRiders,
+    onlineCount,
+    availableCount,
+    onDeliveryCount,
+    offlineCount,
+    selectedRider,
+    setSelectedRider,
+    subscribeFleet,
+    isLoading: isRidersLoading,
+    isSupabaseLive
+  } = useLiveRiderStore();
+
+  const activeBranchId = useManagerStore((s) => s.activeBranchId || 'main_branch');
+
+  React.useEffect(() => {
+    const unsub = subscribeFleet(activeBranchId);
+    return unsub;
+  }, [activeBranchId, subscribeFleet]);
+
   const [selectedDeliveryOrder, setSelectedDeliveryOrder] = useState<Order | null>(null);
 
   const activeDeliveries = liveOrders.filter((o) => 
     o.status === 'out_for_delivery' || o.status === 'partner_assigned'
   );
-
-  const onlineRiders = riders.filter((r) => r.isOnline);
-  const availableRiders = riders.filter((r) => r.isOnline && r.status === 'available');
 
   return (
     <div className="space-y-6">
@@ -50,15 +65,19 @@ export const DeliveryManagementPage: React.FC = () => {
           <div className="px-3 py-1.5 rounded-xl bg-[#141b16] border border-[#26332a] text-xs flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#10b981] animate-ping" />
             <span className="text-[#a4c29c]">Online:</span>
-            <strong className="text-white font-mono">{onlineRiders.length}</strong>
+            <strong className="text-white font-mono">{onlineCount}</strong>
           </div>
           <div className="px-3 py-1.5 rounded-xl bg-[#141b16] border border-[#26332a] text-xs flex items-center gap-2">
             <span className="text-[#a4c29c]">Available:</span>
-            <strong className="text-[#c6a052] font-mono">{availableRiders.length}</strong>
+            <strong className="text-[#c6a052] font-mono">{availableCount}</strong>
           </div>
           <div className="px-3 py-1.5 rounded-xl bg-[#141b16] border border-[#26332a] text-xs flex items-center gap-2">
-            <span className="text-[#a4c29c]">Active Trips:</span>
-            <strong className="text-[#57854d] font-mono">{activeDeliveries.length}</strong>
+            <span className="text-[#a4c29c]">On Delivery:</span>
+            <strong className="text-sky-400 font-mono">{onDeliveryCount}</strong>
+          </div>
+          <div className="px-3 py-1.5 rounded-xl bg-[#141b16] border border-[#26332a] text-xs flex items-center gap-2">
+            <span className="text-[#a4c29c]">Offline:</span>
+            <strong className="text-slate-500 font-mono">{offlineCount}</strong>
           </div>
         </div>
       </div>
@@ -72,14 +91,14 @@ export const DeliveryManagementPage: React.FC = () => {
               <Navigation className="w-4 h-4 text-[#c6a052]" /> Fleet Radar Map
             </h2>
             <span className="text-[11px] text-[#7ba372] flex items-center gap-1.5 font-mono">
-              <Radio className="w-3.5 h-3.5 text-[#10b981] animate-pulse" /> Live Telemetry
+              <Radio className={`w-3.5 h-3.5 ${isSupabaseLive ? 'text-[#10b981] animate-pulse' : 'text-amber-500'}`} /> {isSupabaseLive ? 'Live Supabase Telemetry' : 'Connecting Telemetry...'}
             </span>
           </div>
 
           {/* Real Leaflet OpenStreetMap Fleet Radar Map */}
           <FleetLiveMap
             branchName={activeBranchName}
-            riders={riders}
+            riders={fleetRiders}
             selectedRider={selectedRider}
             onSelectRider={(r) => setSelectedRider(r)}
           />
@@ -89,9 +108,9 @@ export const DeliveryManagementPage: React.FC = () => {
         <div className="lg:col-span-4 p-5 rounded-2xl bg-[#141b16] border border-[#26332a] shadow-xl flex flex-col space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-[#26332a]">
             <h2 className="text-sm font-bold text-white flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-[#57854d]" /> Delivery Partners ({riders.length})
+              <ShieldCheck className="w-4 h-4 text-[#57854d]" /> Delivery Partners ({fleetRiders.length})
             </h2>
-            <span className="text-xs text-[#7ba372] font-mono">{onlineRiders.length} Online</span>
+            <span className="text-xs text-[#7ba372] font-mono">{onlineCount} Online</span>
           </div>
 
           <div className="space-y-2.5 max-h-[440px] overflow-y-auto pr-1">
@@ -99,8 +118,8 @@ export const DeliveryManagementPage: React.FC = () => {
               <div className="p-8 text-center text-xs text-[#a4c29c] animate-pulse">
                 Fetching fleet telemetry...
               </div>
-            ) : riders.length > 0 ? (
-              riders.map((rider) => {
+            ) : fleetRiders.length > 0 ? (
+              fleetRiders.map((rider) => {
                 const isOnline = rider.isOnline;
                 const isAvailable = rider.status === 'available';
 

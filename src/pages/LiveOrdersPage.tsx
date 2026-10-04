@@ -17,9 +17,13 @@ import {
   AlertCircle,
   ShieldCheck,
   CreditCard,
-  Calendar
+  Calendar,
+  Bike,
+  Radio
 } from 'lucide-react';
 import { useManagerStore } from '../store/managerStore';
+import { useLiveRiderStore } from '../store/liveRiderStore';
+import { FleetLiveMap } from '../components/delivery/FleetLiveMap';
 import type { Order, OrderStatus } from '../types/restaurant';
 import { format, formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -51,9 +55,28 @@ export const LiveOrdersPage: React.FC = () => {
     liveOrders, 
     isOrdersLoading, 
     isActionLoading, 
-    updateOrderStatus 
+    updateOrderStatus,
+    activeBranchName
   } = useManagerStore();
 
+  const { 
+    riders: fleetRiders,
+    onlineCount,
+    onDeliveryCount,
+    selectedRider,
+    setSelectedRider,
+    subscribeFleet,
+    isSupabaseLive
+  } = useLiveRiderStore();
+
+  const activeBranchId = useManagerStore((s) => s.activeBranchId || 'main_branch');
+
+  useEffect(() => {
+    const unsub = subscribeFleet(activeBranchId);
+    return unsub;
+  }, [activeBranchId, subscribeFleet]);
+
+  const [showFleetRadar, setShowFleetRadar] = useState(false);
   const [searchParams] = useSearchParams();
   const targetOrderId = searchParams.get('orderId');
 
@@ -180,7 +203,50 @@ export const LiveOrdersPage: React.FC = () => {
             </span>
           </button>
         ))}
+
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setShowFleetRadar(!showFleetRadar)}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border shrink-0 ${
+              showFleetRadar 
+                ? 'bg-[#c6a052] text-black border-[#c6a052] shadow-lg shadow-amber-950/30' 
+                : 'bg-[#141b16] text-[#c6a052] border-[#26332a] hover:border-[#c6a052]'
+            }`}
+          >
+            <Bike className="w-4 h-4" />
+            <span>{showFleetRadar ? 'Hide Fleet Radar' : 'Live Fleet Radar'}</span>
+            <span className="px-1.5 py-0.5 bg-black/20 rounded-full font-mono text-[10px]">
+              {onlineCount} Online
+            </span>
+          </button>
+        </div>
       </div>
+
+      {/* Live Fleet Radar Map (Authorized Online Fleet & Movements) */}
+      {showFleetRadar && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-[#141b16] border border-[#26332a] space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-[#26332a]">
+            <div className="flex items-center gap-2">
+              <Bike className="w-5 h-5 text-[#c6a052]" />
+              <h2 className="text-sm font-bold text-white">Live Fleet Telemetry & Order Tracking</h2>
+              {isSupabaseLive && (
+                <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                  <Radio className="w-2.5 h-2.5 animate-pulse" /> LIVE SUPABASE STREAM
+                </span>
+              )}
+            </div>
+            <span className="text-xs text-[#a4c29c]">
+              {onlineCount} riders online ({onDeliveryCount} on active delivery)
+            </span>
+          </div>
+          <FleetLiveMap
+            branchName={activeBranchName}
+            riders={fleetRiders}
+            selectedRider={selectedRider}
+            onSelectRider={setSelectedRider}
+          />
+        </div>
+      )}
 
       {/* Live Orders Grid */}
       {isOrdersLoading ? (

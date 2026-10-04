@@ -162,10 +162,20 @@ export const FleetLiveMap: React.FC<FleetLiveMapProps> = ({
       markersLayer.addLayer(marker);
     });
 
-    if (boundsPoints.length > 1) {
+    if (boundsPoints.length > 1 && !selectedRider) {
       mapInstanceRef.current.fitBounds(L.latLngBounds(boundsPoints), { padding: [40, 40], maxZoom: 15 });
     }
   }, [riders, restaurantLat, restaurantLng, selectedRider, onSelectRider]);
+
+  // Center on selected rider if selected
+  useEffect(() => {
+    if (!mapInstanceRef.current || !selectedRider) return;
+    const lat = selectedRider.currentLocation?.lat ?? (selectedRider as any).latitude;
+    const lng = selectedRider.currentLocation?.lng ?? (selectedRider as any).longitude;
+    if (lat != null && lng != null && !isNaN(Number(lat)) && !isNaN(Number(lng))) {
+      mapInstanceRef.current.setView([Number(lat), Number(lng)], 16, { animate: true });
+    }
+  }, [selectedRider]);
 
   return (
     <div className="relative w-full h-[440px] rounded-xl overflow-hidden border border-[#26332a] bg-[#0b100d]">

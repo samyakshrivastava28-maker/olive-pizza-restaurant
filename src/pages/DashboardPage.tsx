@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShoppingBag, 
   CheckCircle2, 
@@ -16,21 +16,42 @@ import {
   Store,
   Power,
   AlertTriangle,
-  Loader2
+  Loader2,
+  Radio
 } from 'lucide-react';
 import { useManagerStore } from '../store/managerStore';
+import { useLiveRiderStore } from '../store/liveRiderStore';
+import { FleetLiveMap } from '../components/delivery/FleetLiveMap';
 import { Link } from 'react-router-dom';
 
 export const DashboardPage: React.FC = () => {
   const { 
     activeBranchName, 
     liveOrders, 
-    riders, 
     getDashboardStats,
     restaurantStatus,
     isActionLoading,
     toggleRestaurantStatus
   } = useManagerStore();
+
+  const { 
+    riders: fleetRiders,
+    onlineCount,
+    availableCount,
+    onDeliveryCount,
+    offlineCount,
+    selectedRider,
+    setSelectedRider,
+    subscribeFleet,
+    isSupabaseLive
+  } = useLiveRiderStore();
+
+  const activeBranchId = useManagerStore((s) => s.activeBranchId || 'main_branch');
+
+  useEffect(() => {
+    const unsub = subscribeFleet(activeBranchId);
+    return unsub;
+  }, [activeBranchId, subscribeFleet]);
 
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [closeReason, setCloseReason] = useState('Kitchen Overload / Peak Rush');
@@ -352,33 +373,56 @@ export const DashboardPage: React.FC = () => {
             <div className="flex items-center gap-2">
               <Bike className="w-5 h-5 text-[#c6a052]" />
               <h2 className="text-sm font-bold text-white">Delivery Fleet Telemetry</h2>
+              {isSupabaseLive && (
+                <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                  <Radio className="w-2.5 h-2.5 animate-pulse" /> LIVE GPS
+                </span>
+              )}
             </div>
             <Link to="/delivery" className="text-xs font-bold text-[#c6a052] hover:underline">
-              Live Map & Riders
+              Full Map & Fleet Controls →
             </Link>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 text-center">
-            <div className="p-3.5 rounded-xl bg-[#0d120f] border border-[#26332a]">
-              <span className="text-[11px] text-[#a4c29c] block font-semibold">Online Riders</span>
-              <span className="text-xl font-bold text-[#10b981] font-mono">{stats.onlineRidersCount}</span>
+          <div className="grid grid-cols-4 gap-2 text-center">
+            <div className="p-3 rounded-xl bg-[#0d120f] border border-[#26332a]">
+              <span className="text-[10px] text-[#a4c29c] block font-semibold">Online</span>
+              <span className="text-lg font-bold text-[#10b981] font-mono">{onlineCount}</span>
             </div>
-            <div className="p-3.5 rounded-xl bg-[#0d120f] border border-[#26332a]">
-              <span className="text-[11px] text-[#a4c29c] block font-semibold">Available</span>
-              <span className="text-xl font-bold text-[#c6a052] font-mono">{stats.availableRidersCount}</span>
+            <div className="p-3 rounded-xl bg-[#0d120f] border border-[#26332a]">
+              <span className="text-[10px] text-[#a4c29c] block font-semibold">Available</span>
+              <span className="text-lg font-bold text-[#c6a052] font-mono">{availableCount}</span>
             </div>
-            <div className="p-3.5 rounded-xl bg-[#0d120f] border border-[#26332a]">
-              <span className="text-[11px] text-[#a4c29c] block font-semibold">Active Trips</span>
-              <span className="text-xl font-bold text-white font-mono">{stats.activeDeliveriesCount}</span>
+            <div className="p-3 rounded-xl bg-[#0d120f] border border-[#26332a]">
+              <span className="text-[10px] text-[#a4c29c] block font-semibold">On Delivery</span>
+              <span className="text-lg font-bold text-sky-400 font-mono">{onDeliveryCount}</span>
             </div>
+            <div className="p-3 rounded-xl bg-[#0d120f] border border-[#26332a]">
+              <span className="text-[10px] text-[#a4c29c] block font-semibold">Offline</span>
+              <span className="text-lg font-bold text-slate-500 font-mono">{offlineCount}</span>
+            </div>
+          </div>
+
+          {/* Live Fleet Map on Dashboard */}
+          <div className="rounded-xl overflow-hidden border border-[#26332a]">
+            <FleetLiveMap
+              branchName={activeBranchName}
+              riders={fleetRiders}
+              selectedRider={selectedRider}
+              onSelectRider={setSelectedRider}
+            />
           </div>
 
           {/* Quick Rider Roster preview */}
           <div className="space-y-2 pt-1">
             <span className="text-xs font-semibold text-[#a4c29c] block">Live Rider Roster:</span>
-            {riders.length > 0 ? (
-              riders.slice(0, 3).map((r) => (
-                <div key={r.id} className="p-3 rounded-xl bg-[#0d120f] border border-[#26332a] flex items-center justify-between text-xs">
+            {fleetRiders.length > 0 ? (
+              fleetRiders.slice(0, 3).map((r) => (
+                <div 
+                  key={r.id} 
+                  onClick={() => setSelectedRider(r)}
+                  className={`p-3 rounded-xl bg-[#0d120f] border flex items-center justify-between text-xs cursor-pointer transition-colors ${selectedRider?.id === r.id ? 'border-[#c6a052] bg-[#141b16]' : 'border-[#26332a] hover:border-[#384a3e]'}`}
+                >
                   <div className="flex items-center gap-2.5">
                     <div className={`w-2.5 h-2.5 rounded-full ${r.isOnline ? 'bg-[#10b981]' : 'bg-slate-600'}`} />
                     <div>
