@@ -153,7 +153,38 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       }
     }, 2000);
 
-    return onAuthStateChanged(auth, async (currentUser) => {
+    const handleResume = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible' && auth.currentUser && get().isAuthorized) {
+        const branchId = get().activeBranchId || undefined;
+        fetchApi<any>('/api/auth/authorize-app', {
+          method: 'POST',
+          body: JSON.stringify({
+            targetApp: 'RESTAURANT_MANAGER',
+            requestedBranchId: branchId
+          })
+        }).then(resp => {
+          if (resp && !resp.authorized) {
+            console.warn('[ManagerStore] Account revoked on app resume:', resp.reason);
+            signOut(auth).catch(() => {});
+            localStorage.removeItem('restaurant_manager_profile');
+            sessionStorage.clear();
+            set({
+              user: null,
+              managerProfile: null,
+              userRole: null,
+              isAuthorized: false,
+              restrictedReason: resp.reason || 'This account or franchise has been deactivated by the store owner.',
+              restrictedEmail: auth.currentUser?.email || null
+            });
+          }
+        }).catch(err => console.warn('[ManagerStore] Resume auth check error:', err));
+      }
+    };
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleResume);
+    }
+
+    const unsubAuth = onAuthStateChanged(auth, async (currentUser) => {
       clearTimeout(safetyTimer);
       if (currentUser) {
         const emailLower = (currentUser.email || '').toLowerCase().trim();
@@ -265,6 +296,14 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         });
       }
     });
+
+    return () => {
+      clearTimeout(safetyTimer);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleResume);
+      }
+      unsubAuth();
+    };
   },
 
   setAuthorizedProfile: (profile: ManagerAccount) => {

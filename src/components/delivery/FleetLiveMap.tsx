@@ -53,10 +53,10 @@ export const FleetLiveMap: React.FC<FleetLiveMapProps> = ({
       attributionControl: true,
     });
 
-    // Standard OpenStreetMap Tiles
+    // OpenStreetMap Standard Tiles (reliable, keyless, zero watermark)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors',
     }).addTo(map);
 
     // Delivery Radius (5km store bound)

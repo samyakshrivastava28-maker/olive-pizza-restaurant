@@ -96,15 +96,7 @@ export const LoginPage: React.FC = () => {
   const verifyAndAuthorizeManager = async (user: any): Promise<boolean> => {
     const emailLower = (user.email || '').toLowerCase().trim();
 
-    // 1. Email Verification Gate (for email authentication)
-    if (!user.emailVerified && !user.phoneNumber && authMethod === 'email') {
-      await sendEmailVerification(user).catch(() => {});
-      await signOut(auth).catch(() => {});
-      setError('Email verification required. A verification email has been sent to your email address. Please verify your email before logging in.');
-      return false;
-    }
-
-    // 2. Server Authorization Check
+    // 1. Server Authorization Check (Primary Authority)
     try {
       const resp = await fetchApi<any>('/api/auth/authorize-app', {
         method: 'POST',
@@ -124,31 +116,39 @@ export const LoginPage: React.FC = () => {
           completeManagerSession(user, resp.user);
           return true;
         }
-      } else {
-        let denialReason = resp?.reason || 'This account is not authorized to use the Olive Pizza Restaurant Management application.';
-        if ((resp as any)?.status === 429 || resp?.status === '429' || resp?.reason?.includes('Too many login attempts')) {
-          denialReason = 'Too many login attempts. Please try again later.';
-        } else if (resp?.code === 'PENDING_OWNER_APPROVAL') {
-          denialReason = 'Your Restaurant Manager account is pending Owner approval. You will receive an email once approved.';
-        } else if (resp?.code === 'ACCOUNT_REJECTED') {
-          denialReason = 'Your Restaurant Manager account request was rejected by the Owner.';
-        } else if (resp?.code === 'ACCOUNT_DEACTIVATED') {
-          denialReason = 'This Restaurant Manager account has been deactivated.';
-        }
+      }
 
+      // If not authorized by server and email is unverified
+      if (!user.emailVerified && !user.phoneNumber && authMethod === 'email') {
+        await sendEmailVerification(user).catch(() => {});
         await signOut(auth).catch(() => {});
-        useManagerStore.setState({
-          user: null,
-          managerProfile: null,
-          userRole: null,
-          isAuthorized: false,
-          isAuthChecking: false,
-          restrictedReason: denialReason,
-          restrictedEmail: emailLower
-        });
-        setError(denialReason);
+        setError('Email verification required. A verification email has been sent to your email address. Please verify your email before logging in.');
         return false;
       }
+
+      let denialReason = resp?.reason || 'This account is not authorized to use the Olive Pizza Restaurant Management application.';
+      if ((resp as any)?.status === 429 || resp?.status === '429' || resp?.reason?.includes('Too many login attempts')) {
+        denialReason = 'Too many login attempts. Please try again later.';
+      } else if (resp?.code === 'PENDING_OWNER_APPROVAL') {
+        denialReason = 'Your Restaurant Manager account is pending Owner approval. You will receive an email once approved.';
+      } else if (resp?.code === 'ACCOUNT_REJECTED') {
+        denialReason = 'Your Restaurant Manager account request was rejected by the Owner.';
+      } else if (resp?.code === 'ACCOUNT_DEACTIVATED') {
+        denialReason = 'This Restaurant Manager account has been deactivated.';
+      }
+
+      await signOut(auth).catch(() => {});
+      useManagerStore.setState({
+        user: null,
+        managerProfile: null,
+        userRole: null,
+        isAuthorized: false,
+        isAuthChecking: false,
+        restrictedReason: denialReason,
+        restrictedEmail: emailLower
+      });
+      setError(denialReason);
+      return false;
     } catch (apiErr: any) {
       console.warn('[LoginPage] Authorization API error:', apiErr);
       await signOut(auth).catch(() => {});
