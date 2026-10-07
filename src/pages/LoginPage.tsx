@@ -3,6 +3,7 @@ import {
   signInWithPopup, 
   signInWithEmailAndPassword, 
   signInWithCredential,
+  signInWithCustomToken,
   GoogleAuthProvider, 
   sendPasswordResetEmail,
   sendEmailVerification,
@@ -258,6 +259,11 @@ export const LoginPage: React.FC = () => {
     setError(null);
     try {
       let user: any = null;
+      const isElectron = Boolean(
+        typeof window !== 'undefined' && 
+        ((window as any).restaurantDesktop?.isDesktopManager || (window as any).electronAPI?.isElectron || (window as any).electronAuth?.isDesktop)
+      );
+
       if (Capacitor.isNativePlatform()) {
         const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
         const res = await FirebaseAuthentication.signInWithGoogle();
@@ -266,6 +272,32 @@ export const LoginPage: React.FC = () => {
         const credential = GoogleAuthProvider.credential(idToken);
         const userCred = await signInWithCredential(auth, credential);
         user = userCred.user;
+      } else if (isElectron && ((window as any).restaurantDesktop?.startBrowserAuth || (window as any).electronAuth?.startBrowserAuth)) {
+        // Desktop Electron: Authenticate via System Browser to bypass Chromium/file:// restrictions
+        toast.loading('Opening system browser to authenticate...', { id: 'browser-auth' });
+        const backendBase = 'https://olivepizza-owner.onrender.com';
+        const authUrl = `${backendBase}/api/auth/desktop-login?app=RESTAURANT_MANAGER`;
+        const authFn = (window as any).restaurantDesktop?.startBrowserAuth || (window as any).electronAuth?.startBrowserAuth;
+        const authResult = await authFn(authUrl);
+
+        if (!authResult || !authResult.success) {
+          toast.dismiss('browser-auth');
+          throw new Error(authResult?.error || 'Authentication via browser was cancelled or timed out.');
+        }
+
+        toast.loading('Finalizing manager session...', { id: 'browser-auth' });
+        if (authResult.customToken) {
+          const userCred = await signInWithCustomToken(auth, authResult.customToken);
+          user = userCred.user;
+        } else if (authResult.idToken) {
+          const credential = GoogleAuthProvider.credential(authResult.idToken);
+          const userCred = await signInWithCredential(auth, credential);
+          user = userCred.user;
+        } else {
+          toast.dismiss('browser-auth');
+          throw new Error('No authentication credential received from browser callback.');
+        }
+        toast.dismiss('browser-auth');
       } else {
         const res = await signInWithPopup(auth, googleProvider);
         user = res.user;

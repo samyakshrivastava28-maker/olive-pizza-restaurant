@@ -15,7 +15,9 @@ contextBridge.exposeInMainWorld('restaurantDesktop', {
     const handler = (event, data) => callback(data);
     ipcRenderer.on('notification-click', handler);
     return () => ipcRenderer.removeListener('notification-click', handler);
-  }
+  },
+  startBrowserAuth: (authUrl) => ipcRenderer.invoke('start-browser-auth', { authUrl }),
+  openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url)
 });
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -25,5 +27,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (event, data) => callback(data);
     ipcRenderer.on('notification-click', handler);
     return () => ipcRenderer.removeListener('notification-click', handler);
-  }
+  },
+  startBrowserAuth: (authUrl) => ipcRenderer.invoke('start-browser-auth', { authUrl }),
+  openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url)
+});
+
+contextBridge.exposeInMainWorld('electronAuth', {
+  isDesktop: true,
+  startBrowserAuth: (authUrl) => ipcRenderer.invoke('start-browser-auth', { authUrl }),
+  openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url)
 });
