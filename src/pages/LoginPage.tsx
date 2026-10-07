@@ -16,7 +16,7 @@ import { Capacitor } from '@capacitor/core';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Mail, Lock, AlertCircle, ArrowRight, ShieldCheck, Key, X, Phone, User } from 'lucide-react';
 import { AppLogo } from '../components/common/AppLogo';
-import { fetchApi } from '../lib/api';
+import { fetchApi, getApiBaseUrl, PRODUCTION_BACKEND_URL } from '../lib/api';
 import { useManagerStore } from '../store/managerStore';
 import toast from 'react-hot-toast';
 import { requestPostLoginNotificationPermissions } from '../services/notificationPermissionService';
@@ -275,7 +275,7 @@ export const LoginPage: React.FC = () => {
       } else if (isElectron && ((window as any).restaurantDesktop?.startBrowserAuth || (window as any).electronAuth?.startBrowserAuth)) {
         // Desktop Electron: Authenticate via System Browser to bypass Chromium/file:// restrictions
         toast.loading('Opening system browser to authenticate...', { id: 'browser-auth' });
-        const backendBase = 'https://olivepizza-owner.onrender.com';
+        const backendBase = getApiBaseUrl() || PRODUCTION_BACKEND_URL;
         const authUrl = `${backendBase}/api/auth/desktop-login?app=RESTAURANT_MANAGER`;
         const authFn = (window as any).restaurantDesktop?.startBrowserAuth || (window as any).electronAuth?.startBrowserAuth;
         const authResult = await authFn(authUrl);

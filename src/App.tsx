@@ -4,18 +4,27 @@ import { Toaster } from 'react-hot-toast';
 import { AppLayout } from './components/layout/AppLayout';
 import { useManagerStore } from './store/managerStore';
 
-// Canonical 6 Restaurant Manager Pages
+import { Suspense, lazy } from 'react';
+
+// Core Critical Pages (Eagerly loaded for fast startup)
 import { DashboardPage } from './pages/DashboardPage';
 import { LiveOrdersPage } from './pages/LiveOrdersPage';
-import { OrderHistoryPage } from './pages/OrderHistoryPage';
-import { NotificationsPage } from './pages/NotificationsPage';
-import { EmailPage } from './pages/EmailPage';
-import { DeliveryManagementPage } from './pages/DeliveryManagementPage';
 import { LoginPage } from './pages/LoginPage';
-import { InventoryManager } from './pages/InventoryManager';
-import { MenuManagementPage } from './pages/MenuManagementPage';
-
 import { AccessDeniedPage } from './pages/AccessDeniedPage';
+
+// Auxiliary Pages (Lazy loaded for optimal bundle size and responsive startup)
+const OrderHistoryPage = lazy(() => import('./pages/OrderHistoryPage').then(m => ({ default: m.OrderHistoryPage })));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage').then(m => ({ default: m.NotificationsPage })));
+const EmailPage = lazy(() => import('./pages/EmailPage').then(m => ({ default: m.EmailPage })));
+const DeliveryManagementPage = lazy(() => import('./pages/DeliveryManagementPage').then(m => ({ default: m.DeliveryManagementPage })));
+const InventoryManager = lazy(() => import('./pages/InventoryManager').then(m => ({ default: m.InventoryManager })));
+const MenuManagementPage = lazy(() => import('./pages/MenuManagementPage').then(m => ({ default: m.MenuManagementPage })));
+
+const PageLoader = () => (
+  <div className="flex h-64 w-full items-center justify-center">
+    <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+  </div>
+);
 
 export function App() {
   const { initAuth, isAuthChecking, restrictedReason } = useManagerStore();
@@ -74,12 +83,12 @@ export function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/live-orders" element={<LiveOrdersPage />} />
-          <Route path="/order-history" element={<OrderHistoryPage />} />
-          <Route path="/notifications" element={<NotificationsPage />} />
-          <Route path="/email" element={<EmailPage />} />
-          <Route path="/delivery" element={<DeliveryManagementPage />} />
-          <Route path="/inventory" element={<InventoryManager />} />
-          <Route path="/menu" element={<MenuManagementPage />} />
+          <Route path="/order-history" element={<Suspense fallback={<PageLoader />}><OrderHistoryPage /></Suspense>} />
+          <Route path="/notifications" element={<Suspense fallback={<PageLoader />}><NotificationsPage /></Suspense>} />
+          <Route path="/email" element={<Suspense fallback={<PageLoader />}><EmailPage /></Suspense>} />
+          <Route path="/delivery" element={<Suspense fallback={<PageLoader />}><DeliveryManagementPage /></Suspense>} />
+          <Route path="/inventory" element={<Suspense fallback={<PageLoader />}><InventoryManager /></Suspense>} />
+          <Route path="/menu" element={<Suspense fallback={<PageLoader />}><MenuManagementPage /></Suspense>} />
 
           {/* Clean legacy fallback redirects */}
           <Route path="/overview" element={<Navigate to="/dashboard" replace />} />
