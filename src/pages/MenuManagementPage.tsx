@@ -10,7 +10,7 @@ import {
   X
 } from 'lucide-react';
 import { useManagerStore } from '../store/managerStore';
-import { getApiUrl } from '../lib/api';
+import { fetchApi } from '../lib/api';
 import toast from 'react-hot-toast';
 
 export const MenuManagementPage: React.FC = () => {
@@ -32,11 +32,8 @@ export const MenuManagementPage: React.FC = () => {
   const loadMenuManagement = async () => {
     setLoading(true);
     try {
-      const res = await fetch(getApiUrl(`/api/menu/branch/${branchId}/management`), {
-        headers: { 'Authorization': 'Bearer test-manager-token' }
-      });
-      const data = await res.json();
-      if (data.success && data.products) {
+      const data = await fetchApi(`/api/menu/branch/${branchId}/management`);
+      if (data?.success && data.products) {
         setProducts(data.products);
       }
     } catch (err: any) {
@@ -54,17 +51,16 @@ export const MenuManagementPage: React.FC = () => {
     const nextState = !product.isEnabledForBranch;
     const toastId = toast.loading((nextState ? 'Enabling ' : 'Disabling ') + product.name + '...');
     try {
-      const res = await fetch(getApiUrl(`/api/menu/branch/${branchId}/toggle`), {
+      const data = await fetchApi(`/api/menu/branch/${branchId}/toggle`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer test-manager-token' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productId: product.id, isEnabled: nextState })
       });
-      const data = await res.json();
-      if (data.success) {
+      if (data?.success) {
         setProducts(products.map(p => p.id === product.id ? { ...p, isEnabledForBranch: nextState } : p));
         toast.success(product.name + ' is now ' + (nextState ? 'ENABLED' : 'DISABLED') + ' for ' + branchName, { id: toastId });
       } else {
-        toast.error(data.error || 'Failed to update', { id: toastId });
+        toast.error(data?.error || 'Failed to update', { id: toastId });
       }
     } catch (err: any) {
       toast.error('Network error', { id: toastId });
@@ -75,9 +71,9 @@ export const MenuManagementPage: React.FC = () => {
     if (!selectedProduct) return;
     const toastId = toast.loading('Saving branch customization rules...');
     try {
-      const res = await fetch(getApiUrl(`/api/menu/branch/${branchId}/customizations`), {
+      const data = await fetchApi(`/api/menu/branch/${branchId}/customizations`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer test-manager-token' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           productId: selectedProduct.id,
           allowedSizes: selectedProduct.selectedSizes,
@@ -86,13 +82,12 @@ export const MenuManagementPage: React.FC = () => {
           channelAvailability: selectedProduct.channelAvailability
         })
       });
-      const data = await res.json();
-      if (data.success) {
+      if (data?.success) {
         toast.success('Customization rules saved!', { id: toastId });
         setIsCustomizing(false);
         loadMenuManagement();
       } else {
-        toast.error(data.error || 'Failed to save', { id: toastId });
+        toast.error(data?.error || 'Failed to save', { id: toastId });
       }
     } catch (err: any) {
       toast.error('Network error', { id: toastId });
@@ -103,9 +98,9 @@ export const MenuManagementPage: React.FC = () => {
     e.preventDefault();
     const toastId = toast.loading('Creating local physical-only item...');
     try {
-      const res = await fetch(getApiUrl(`/api/menu/branch/${branchId}/local-product`), {
+      const data = await fetchApi(`/api/menu/branch/${branchId}/local-product`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer test-manager-token' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: localName.trim(),
           category: localCategory,
@@ -113,15 +108,14 @@ export const MenuManagementPage: React.FC = () => {
           description: localDesc.trim()
         })
       });
-      const data = await res.json();
-      if (data.success) {
+      if (data?.success) {
         toast.success('Local item created (Dine-In/Takeaway only)!', { id: toastId });
         setIsLocalProductModal(false);
         setLocalName('');
         setLocalDesc('');
         loadMenuManagement();
       } else {
-        toast.error(data.error || 'Failed to create', { id: toastId });
+        toast.error(data?.error || 'Failed to create', { id: toastId });
       }
     } catch (err: any) {
       toast.error('Network error', { id: toastId });

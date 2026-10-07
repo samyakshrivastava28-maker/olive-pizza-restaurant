@@ -60,9 +60,8 @@ export function InventoryManager() {
   const loadInventory = async () => {
     setLoading(true);
     try {
-      const res = await fetchApi(`/api/inventory?branchId=${activeBranchId || ''}`);
-      const data = await res.json();
-      if (data.items) {
+      const data = await fetchApi(`/api/inventory?branchId=${activeBranchId || ''}`);
+      if (data?.items) {
         setItems(data.items);
       }
     } catch (err: any) {
@@ -91,7 +90,7 @@ export function InventoryManager() {
     const toastId = toast.loading('Recording stock adjustment...');
 
     try {
-      const res = await fetchApi('/api/inventory/adjust', {
+      const data = await fetchApi('/api/inventory/adjust', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -103,8 +102,7 @@ export function InventoryManager() {
         }),
       });
 
-      const data = await res.json();
-      if (data.success) {
+      if (data?.success) {
         toast.success(
           `Stock updated! New quantity: ${data.item?.currentQuantity} ${selectedItem.unit}`,
           { id: toastId }
@@ -114,7 +112,7 @@ export function InventoryManager() {
         setAdjustReason('');
         loadInventory();
       } else {
-        toast.error('Failed: ' + (data.error || 'Server error'), { id: toastId });
+        toast.error('Failed: ' + (data?.error || 'Server error'), { id: toastId });
       }
     } catch (err: any) {
       toast.error('Adjustment failed: ' + err.message, { id: toastId });
@@ -134,7 +132,7 @@ export function InventoryManager() {
     const toastId = toast.loading('Adding inventory item...');
 
     try {
-      const res = await fetchApi('/api/inventory', {
+      const data = await fetchApi('/api/inventory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -146,9 +144,8 @@ export function InventoryManager() {
         }),
       });
 
-      const data = await res.json();
-      if (data.success) {
-        toast.success(`"${data.item.name}" added to inventory!`, { id: toastId });
+      if (data?.success) {
+        toast.success(`"${data.item?.name || newItem.name}" added to inventory!`, { id: toastId });
         setShowAddModal(false);
         setNewItem({
           name: '',
@@ -163,7 +160,7 @@ export function InventoryManager() {
         });
         loadInventory();
       } else {
-        toast.error('Failed: ' + (data.error || 'Server error'), { id: toastId });
+        toast.error('Failed: ' + (data?.error || 'Server error'), { id: toastId });
       }
     } catch (err: any) {
       toast.error('Failed to create: ' + err.message, { id: toastId });
