@@ -58,6 +58,27 @@ function formatOrderForAlert(raw: any, id: string) {
   };
 }
 
+// ── SYNTHETIC / TEST ORDER SAFEGUARD ──────────────────────────────────
+// Prevent test/mock/synthetic orders from ever sounding sirens or popping alerts
+function isSyntheticOrder(orderId?: string, data?: any): boolean {
+  const id = String(orderId || data?.id || data?.orderId || '').toLowerCase();
+  if (
+    id.startsWith('test_') ||
+    id.startsWith('mock_') ||
+    id.startsWith('synthetic_') ||
+    id.startsWith('dummy_') ||
+    id.startsWith('online_test_') ||
+    id.startsWith('ord_test_')
+  ) {
+    return true;
+  }
+  if (data?.isTest === true) return true;
+  if (data?.customerName && /^(test|mock|synthetic|dummy|fake|archival test|idempotency test)/i.test(data.customerName)) return true;
+  if (data?.orderNumber && /test/i.test(String(data.orderNumber))) return true;
+  if (data?.orderSource && /test|mock/i.test(String(data.orderSource))) return true;
+  return false;
+}
+
 export default function PushNotificationManager() {
   const navigate = useNavigate();
   const { user, managerProfile, activeBranchId, updateOrderStatus } = useManagerStore();
@@ -68,57 +89,7 @@ export default function PushNotificationManager() {
 
   // Create Android Notification Channels for High-Urgency Orders
   const createChannels = useCallback(async () => {
-    if (!Capacitor.isNativePlatform()) return;
-    try {
-      // 1. Delete legacy channels to clear any cached silent/corrupted channel settings
-      await PushNotifications.deleteChannel({ id: 'olive_order_new' }).catch(() => {});
-
-      // 2. Urgent Incoming Order Channel (v3 Alarm) -> new_order.mp3
-      await PushNotifications.createChannel({
-        id: 'olive_order_alarm_v3',
-        name: 'Urgent Order Alarms (v3)',
-        description: 'Hardware-level incoming order alarms. Plays continuous chime through alarm audio stream.',
-        importance: 5, // MAX importance (heads-up banner + audio)
-        visibility: 1, // Public on lockscreen
-        vibration: true,
-        sound: 'new_order',
-      });
-
-      // 2b. Backward compatibility channel (v2)
-      await PushNotifications.createChannel({
-        id: 'olive_order_new_v2',
-        name: 'New Orders Alarm (v2)',
-        description: 'Critical incoming order alerts. Wakes device and sounds kitchen alarm.',
-        importance: 5, // MAX importance (heads-up banner + audio)
-        visibility: 1, // Public on lockscreen
-        vibration: true,
-        sound: 'new_order',
-      });
-
-      // 3. Order Delivered / Completed Channel (v2) -> order_delivered.mp3
-      await PushNotifications.createChannel({
-        id: 'olive_order_completed_v2',
-        name: 'Order Delivered / Completed (v2)',
-        description: 'Delivered and completed order notifications. Plays celebratory chime.',
-        importance: 4, // HIGH importance
-        visibility: 1,
-        vibration: true,
-        sound: 'order_delivered',
-      });
-
-      // 4. System Announcements Channel
-      await PushNotifications.createChannel({
-        id: 'olive_system',
-        name: 'System Alerts',
-        description: 'System announcements and management updates',
-        importance: 4,
-        visibility: 1,
-        vibration: true,
-        sound: 'system_alert',
-      });
-    } catch (e) {
-      console.warn('[Restaurant PushManager] Channel creation notice:', e);
-    }
+    await SoundAlertEngine.initAndroidNotificationChannels();
   }, []);
 
   // 1. Evaluate Permission State on Auth
@@ -157,6 +128,7 @@ export default function PushNotificationManager() {
 
       if (data.type === 'START_ALERT') {
         const orderId = data.orderId;
+        if (isSyntheticOrder(orderId, data)) return;
         const dedupKey = `NEW_ORDER:${orderId || Date.now()}`;
         if (!orderId || NotificationDeduplicator.shouldProcess(dedupKey)) {
           SoundAlertEngine.startContinuousAlarm('new_order');
@@ -260,6 +232,7 @@ export default function PushNotificationManager() {
             status === 'pending_acceptance' ||
             (!normType && !status)
           ) {
+            if (isSyntheticOrder(orderId, data)) return;
             const dedupKey = `NEW_ORDER:${orderId || Date.now()}`;
             if (NotificationDeduplicator.shouldProcess(dedupKey)) {
               SoundAlertEngine.startContinuousAlarm('new_order');
@@ -412,6 +385,11 @@ export default function PushNotificationManager() {
         if (change.type === 'added') {
           const order = { id: change.doc.id, ...change.doc.data() } as any;
 
+          // ── SYNTHETIC / TEST ORDER SAFEGUARD ──────────────────────────────────
+          if (isSyntheticOrder(order.id, order)) {
+            return;
+          }
+
           // Strict Franchise Isolation: Ignore alarms from other franchises
           const normF = (id?: string) => (id || '').trim().toLowerCase().replace(/^fra_/, '');
           if (profileFranchiseId && order.franchiseId && normF(order.franchiseId) !== normF(profileFranchiseId) && profileFranchiseId !== 'all') {
@@ -494,6 +472,7 @@ export default function PushNotificationManager() {
             if (msg.type === 'sync_response' && Array.isArray(msg.data?.missedEvents)) {
               for (const missed of msg.data.missedEvents) {
                 if (missed.type === 'order.created' && missed.data) {
+                  if (isSyntheticOrder(missed.data.orderId, missed.data)) continue;
                   const dedupKey = `NEW_ORDER:${missed.data.orderId}`;
                   if (NotificationDeduplicator.shouldProcess(dedupKey)) {
                     SoundAlertEngine.startContinuousAlarm('new_order');
@@ -508,10 +487,12 @@ export default function PushNotificationManager() {
 
             // Handle live order.created event
             if (msg.type === 'order.created' && msg.data) {
-              const dedupKey = `NEW_ORDER:${msg.data.orderId}`;
-              if (NotificationDeduplicator.shouldProcess(dedupKey)) {
-                SoundAlertEngine.startContinuousAlarm('new_order');
-                setNewOrderAlert(formatOrderForAlert(msg.data, msg.data.orderId));
+              if (!isSyntheticOrder(msg.data.orderId, msg.data)) {
+                const dedupKey = `NEW_ORDER:${msg.data.orderId}`;
+                if (NotificationDeduplicator.shouldProcess(dedupKey)) {
+                  SoundAlertEngine.startContinuousAlarm('new_order');
+                  setNewOrderAlert(formatOrderForAlert(msg.data, msg.data.orderId));
+                }
               }
             }
           } catch (e) {

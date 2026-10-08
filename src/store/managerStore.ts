@@ -378,6 +378,25 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         const activeList: Order[] = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data();
+
+          // ── SYNTHETIC / TEST ORDER SAFEGUARD ──────────────────────────────────
+          // Never display or trigger loud kitchen alarms for test/mock/synthetic orders
+          const isSynthetic = 
+            docSnap.id.startsWith('test_') ||
+            docSnap.id.startsWith('mock_') ||
+            docSnap.id.startsWith('synthetic_') ||
+            docSnap.id.startsWith('dummy_') ||
+            docSnap.id.startsWith('online_test_') ||
+            docSnap.id.startsWith('ord_test_') ||
+            (data.customerName && /^(test|mock|synthetic|dummy|fake|archival test|idempotency test)/i.test(data.customerName)) ||
+            (data.orderNumber && /test/i.test(String(data.orderNumber))) ||
+            (data.orderSource && /test|mock/i.test(String(data.orderSource))) ||
+            data.isTest === true;
+
+          if (isSynthetic) {
+            return;
+          }
+
           const status = (data.status || 'pending').toLowerCase() as OrderStatus;
           const orderBranch = data.branchId || targetBranchId;
           const orderFranchise = data.franchiseId;
@@ -467,6 +486,18 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'modified') {
             const data = change.doc.data();
+            const isSynthetic = 
+              change.doc.id.startsWith('test_') ||
+              change.doc.id.startsWith('mock_') ||
+              change.doc.id.startsWith('synthetic_') ||
+              change.doc.id.startsWith('dummy_') ||
+              change.doc.id.startsWith('online_test_') ||
+              change.doc.id.startsWith('ord_test_') ||
+              (data.customerName && /^(test|mock|synthetic|dummy|fake|archival test|idempotency test)/i.test(data.customerName)) ||
+              (data.orderNumber && /test/i.test(String(data.orderNumber))) ||
+              data.isTest === true;
+            if (isSynthetic) return;
+
             const s = (data.status || '').toLowerCase();
             if (s === 'delivered') {
               if (NotificationDeduplicator.shouldProcess(`ORDER_DELIVERED:${change.doc.id}`)) {

@@ -7,6 +7,7 @@ import { AccessDeniedPage } from '../../pages/AccessDeniedPage';
 import { Pizza } from 'lucide-react';
 
 import PushNotificationManager from '../../services/PushNotificationManager';
+import { PersistentActiveOrderSheet } from '../orders/PersistentActiveOrderSheet';
 
 export const AppLayout: React.FC = () => {
   const { user, isAuthChecking, isAuthorized, restrictedReason } = useManagerStore();
@@ -51,10 +52,12 @@ export const AppLayout: React.FC = () => {
       <div className="lg:pl-64 flex flex-col flex-1 min-w-0">
         <Header onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
 
-        <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto">
+        <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto pb-24">
           <Outlet />
         </main>
       </div>
+
+      <PersistentActiveOrderSheet />
     </div>
   );
 };

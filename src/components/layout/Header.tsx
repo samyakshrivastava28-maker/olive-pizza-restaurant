@@ -9,10 +9,12 @@ import {
   ArrowLeft,
   ShieldCheck,
   Bell,
-  BellOff
+  BellOff,
+  Volume2
 } from 'lucide-react';
 import { useManagerStore } from '../../store/managerStore';
 import { deviceAlarmService } from '../../services/DeviceAlarmService';
+import { SoundSettingsModal } from '../ui/SoundSettingsModal';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -29,6 +31,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   } = useManagerStore();
 
   const [alarmEnabled, setAlarmEnabled] = React.useState(() => deviceAlarmService.isAlarmEnabled());
+  const [isSoundSettingsOpen, setIsSoundSettingsOpen] = React.useState(false);
 
   React.useEffect(() => {
     return deviceAlarmService.subscribe((enabled) => setAlarmEnabled(enabled));
@@ -114,6 +117,16 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           <span>Alarm: {alarmEnabled ? 'ON' : 'OFF'}</span>
         </button>
 
+        {/* Sound Settings Modal Trigger */}
+        <button
+          onClick={() => setIsSoundSettingsOpen(true)}
+          className="p-2 rounded-xl bg-[#141b16] border border-[#26332a] text-[#a4c29c] hover:text-white hover:bg-[#1a231d] transition-colors cursor-pointer"
+          title="Sound & Alert Preferences"
+          aria-label="Sound Preferences"
+        >
+          <Volume2 className="w-4 h-4 text-[#c6a052]" />
+        </button>
+
         {/* Real-time sync badge */}
         <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#10b981]/10 border border-[#10b981]/20 text-[11px] text-[#10b981] font-semibold">
           <Radio className="w-3.5 h-3.5 animate-pulse" />
@@ -144,6 +157,11 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           </button>
         </div>
       </div>
+
+      <SoundSettingsModal 
+        isOpen={isSoundSettingsOpen} 
+        onClose={() => setIsSoundSettingsOpen(false)} 
+      />
     </header>
   );
 };
