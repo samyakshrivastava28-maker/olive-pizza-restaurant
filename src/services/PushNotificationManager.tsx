@@ -173,6 +173,10 @@ export default function PushNotificationManager() {
           const orderId = String(data.orderId || data.order_id || data.id || '');
           const status = String(data.status || '').toLowerCase();
 
+          // INVARIANT (PHASES 28-30): Push notification payload only signals WHICH order changed.
+          // It is never treated as authoritative order data. Authoritative state is always fetched
+          // from Firestore / backend via live listener or navigation to /live-orders.
+
           if (normType === 'ORDER_DELIVERED' || status === 'delivered') {
             const dedupKey = `ORDER_DELIVERED:${orderId || Date.now()}`;
             if (NotificationDeduplicator.shouldProcess(dedupKey)) {
