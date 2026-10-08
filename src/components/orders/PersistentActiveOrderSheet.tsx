@@ -22,7 +22,8 @@ import {
   ChevronRight, 
   ShieldCheck, 
   Bike, 
-  AlertCircle
+  AlertCircle,
+  PackageCheck
 } from 'lucide-react';
 import { useManagerStore } from '../../store/managerStore';
 import { SoundAlertEngine } from '../../lib/SoundAlertEngine';
@@ -37,8 +38,21 @@ const ACTIVE_STATUS_FLOW: OrderStatus[] = [
   'pending_acceptance',
   'accepted',
   'preparing',
-  'ready'
+  'ready',
+  'partner_assigned',
+  'picked_up',
+  'out_for_delivery'
 ];
+
+function escapeHtml(str: any): string {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 function printOrderReceipt(order: Order, branchName?: string) {
   const iframe = document.createElement('iframe');
@@ -56,10 +70,10 @@ function printOrderReceipt(order: Order, branchName?: string) {
   const itemsHtml = (order.items || []).map((it) => `
     <tr>
       <td style="padding: 4px 0; font-size: 13px;">
-        <strong>${it.quantity}x</strong> ${it.name}
-        ${it.variant || it.size ? `<br><small style="color: #666;">Size: ${it.variant || it.size}</small>` : ''}
-        ${it.crust ? `<br><small style="color: #666;">Crust: ${it.crust}</small>` : ''}
-        ${it.addons && it.addons.length ? `<br><small style="color: #444;">+ ${it.addons.map(a => a.name).join(', ')}</small>` : ''}
+        <strong>${escapeHtml(it.quantity)}x</strong> ${escapeHtml(it.name)}
+        ${it.variant || it.size ? `<br><small style="color: #666;">Size: ${escapeHtml(it.variant || it.size)}</small>` : ''}
+        ${it.crust ? `<br><small style="color: #666;">Crust: ${escapeHtml(it.crust)}</small>` : ''}
+        ${it.addons && it.addons.length ? `<br><small style="color: #444;">+ ${it.addons.map(a => escapeHtml(a.name)).join(', ')}</small>` : ''}
       </td>
       <td style="padding: 4px 0; text-align: right; vertical-align: top; font-size: 13px;">
         ₹${((it.price || 0) * (it.quantity || 1)).toFixed(0)}
@@ -67,11 +81,23 @@ function printOrderReceipt(order: Order, branchName?: string) {
     </tr>
   `).join('');
 
+  const safeOrderNumber = escapeHtml(order.orderNumber || '#' + order.id.slice(0, 6).toUpperCase());
+  const safeDailyOrder = order.dailyOrderNumber ? escapeHtml(order.dailyOrderNumber) : '';
+  const safeBranch = escapeHtml(branchName || 'Kitchen Operations');
+  const safeType = escapeHtml((order.fulfillmentType || order.deliveryType || 'DELIVERY').toUpperCase());
+  const safeTable = order.tableNumber ? escapeHtml(order.tableNumber) : '';
+  const safeCustomerName = escapeHtml(order.customerName || 'Walk-in');
+  const safePhone = order.contactPhone ? escapeHtml(order.contactPhone) : '';
+  const rawAddress = typeof order.deliveryAddress === 'object' ? order.deliveryAddress?.addressLine : order.deliveryAddress;
+  const safeAddress = rawAddress ? escapeHtml(rawAddress) : '';
+  const safePaymentMethod = escapeHtml((order.paymentMethod || 'COD').toUpperCase());
+  const safePaymentStatus = escapeHtml((order.paymentStatus || 'PENDING').toUpperCase());
+
   const html = `
     <!DOCTYPE html>
     <html>
       <head>
-        <title>Order Receipt - ${order.orderNumber || order.id}</title>
+        <title>Order Receipt - ${safeOrderNumber}</title>
         <style>
           @page { margin: 4mm; }
           body {
@@ -92,21 +118,21 @@ function printOrderReceipt(order: Order, branchName?: string) {
       <body>
         <div class="text-center">
           <h2 style="margin: 0; font-size: 18px;">🍕 OLIVE PIZZA</h2>
-          <div style="font-size: 11px;">${branchName || 'Kitchen Operations'}</div>
+          <div style="font-size: 11px;">${safeBranch}</div>
           <div style="font-size: 10px; margin-top: 2px;">*** KITCHEN ORDER TICKET ***</div>
         </div>
         <div class="divider"></div>
         <div>
-          <strong>Order:</strong> ${order.orderNumber || '#' + order.id.slice(0, 6).toUpperCase()}
-          ${order.dailyOrderNumber ? `<span style="float: right;"><strong>Daily #${order.dailyOrderNumber}</strong></span>` : ''}
+          <strong>Order:</strong> ${safeOrderNumber}
+          ${safeDailyOrder ? `<span style="float: right;"><strong>Daily #${safeDailyOrder}</strong></span>` : ''}
         </div>
-        <div><strong>Type:</strong> ${(order.fulfillmentType || order.deliveryType || 'DELIVERY').toUpperCase()} ${order.tableNumber ? `(Table ${order.tableNumber})` : ''}</div>
-        <div><strong>Date:</strong> ${new Date(order.createdAt).toLocaleString()}</div>
+        <div><strong>Type:</strong> ${safeType} ${safeTable ? `(Table ${safeTable})` : ''}</div>
+        <div><strong>Date:</strong> ${escapeHtml(new Date(order.createdAt).toLocaleString())}</div>
         <div class="divider"></div>
         <div>
-          <strong>Customer:</strong> ${order.customerName || 'Walk-in'}<br>
-          ${order.contactPhone ? `<strong>Phone:</strong> ${order.contactPhone}<br>` : ''}
-          ${order.deliveryAddress ? `<strong>Address:</strong> ${typeof order.deliveryAddress === 'object' ? order.deliveryAddress.addressLine : order.deliveryAddress}<br>` : ''}
+          <strong>Customer:</strong> ${safeCustomerName}<br>
+          ${safePhone ? `<strong>Phone:</strong> ${safePhone}<br>` : ''}
+          ${safeAddress ? `<strong>Address:</strong> ${safeAddress}<br>` : ''}
         </div>
         <div class="divider"></div>
         <table>
@@ -134,7 +160,7 @@ function printOrderReceipt(order: Order, branchName?: string) {
         </table>
         <div class="divider"></div>
         <div class="text-center" style="font-size: 11px;">
-          <strong>Payment:</strong> ${(order.paymentMethod || 'COD').toUpperCase()} • <strong>${(order.paymentStatus || 'PENDING').toUpperCase()}</strong>
+          <strong>Payment:</strong> ${safePaymentMethod} • <strong>${safePaymentStatus}</strong>
         </div>
         <div class="text-center" style="font-size: 10px; margin-top: 8px;">
           Thank you for choosing Olive Pizza!<br>

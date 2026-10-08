@@ -199,113 +199,143 @@ export class SoundAlertEngine {
   }
 
   /**
-   * Play an audio file from public assets with volume applied.
+   * Try playing custom audio from list of candidate paths.
+   * Resolves if playback started successfully, throws error if all files fail or are blocked.
    */
-  private static playAudioFile(filePaths: string[]): boolean {
+  private static async playCustomAudio(filePaths: string[]): Promise<void> {
     const settings = this.getSettings();
-    if (settings.muted) return false;
+    if (settings.muted) return;
 
     for (const path of filePaths) {
       try {
         const audio = new Audio(path);
         audio.volume = settings.volume;
         this.currentAudioElement = audio;
-        const playPromise = audio.play();
-        if (playPromise) {
-          playPromise.catch(() => {
-            // Browser autoplay blocked or file unavailable -> fallback to synthesized tones
-          });
-        }
-        return true;
+        await audio.play();
+        return; // Success!
       } catch {
         continue;
       }
     }
-    return false;
+    throw new Error('All custom audio files failed to play');
   }
 
   /**
-   * Play a one-shot notification chime or alert tone.
+   * Synthesize fallback musical frequency tones using Web Audio API.
+   * Only called when custom audio files fail to load or play.
    */
-  static playSound(type: SoundType): void {
-    this.unlockAudio();
-    const settings = this.getSettings();
-    if (settings.muted) return;
-
+  private static playSynthesizedTone(type: SoundType): void {
     switch (type) {
-      case 'new_order': {
-        if (!settings.newOrderAlarm) return;
-        this.playAudioFile(['/sounds/order_alert.mp3', '/sounds/order_alert.wav', '/sounds/new_order.mp3', '/sounds/new_order.wav']);
+      case 'new_order':
         // High-importance commanding 4-tone sequence: A5 -> D6 -> A5 -> D6
         this.playTone(880, 0.22, 'triangle', 0.9, 0);
         this.playTone(1174, 0.22, 'sine', 0.9, 0.14);
         this.playTone(880, 0.22, 'triangle', 0.9, 0.28);
         this.playTone(1174, 0.35, 'sine', 1.0, 0.42);
-        this.triggerVibration([300, 200, 300, 200, 400]);
         break;
-      }
 
-      case 'delivery_urgent': {
-        this.playAudioFile(['/sounds/system_alert.mp3', '/sounds/delivery_chime.mp3']);
+      case 'delivery_urgent':
         this.playTone(987, 0.18, 'sine', 0.85, 0);
         this.playTone(1318, 0.28, 'sine', 0.95, 0.12);
-        this.triggerVibration([200, 100, 200]);
         break;
-      }
 
-      case 'order_accepted': {
-        this.playAudioFile(['/sounds/order_confirmed.mp3', '/sounds/success_ding.mp3']);
+      case 'order_accepted':
         this.playTone(659, 0.2, 'sine', 0.5, 0);
         this.playTone(880, 0.3, 'sine', 0.6, 0.15);
-        this.triggerVibration([100]);
         break;
-      }
 
-      case 'order_ready': {
-        this.playAudioFile(['/sounds/success_ding.mp3', '/sounds/delivery_chime.mp3']);
+      case 'order_ready':
         this.playTone(1046, 0.35, 'sine', 0.7, 0);
-        this.triggerVibration([150]);
         break;
-      }
 
-      case 'order_cancelled': {
-        this.playAudioFile(['/sounds/cancel_buzz.mp3']);
+      case 'order_cancelled':
         this.playTone(440, 0.25, 'sawtooth', 0.6, 0);
         this.playTone(330, 0.45, 'sine', 0.7, 0.2);
-        this.triggerVibration([200, 100, 200]);
         break;
-      }
 
-      case 'order_delivered': {
-        if (!settings.deliveryCompletedChime) return;
-        this.playAudioFile([
-          '/sounds/delivery_completed.mp3',
-          '/sounds/delivery_completed.wav',
-          '/sounds/order_delivered.mp3',
-          '/sounds/order_delivered.wav',
-          '/sounds/delivery_chime.mp3'
-        ]);
+      case 'order_delivered':
         // Celebratory melodic 3-tone chime: G5 -> B5 -> D6
         this.playTone(784, 0.16, 'sine', 0.7, 0);
         this.playTone(987, 0.16, 'sine', 0.75, 0.12);
         this.playTone(1174, 0.32, 'sine', 0.85, 0.24);
-        this.triggerVibration([150, 100, 150]);
         break;
-      }
 
-      case 'soft_pop': {
-        this.playAudioFile(['/sounds/soft_pop.mp3']);
+      case 'soft_pop':
         this.playTone(880, 0.1, 'sine', 0.3, 0);
         break;
-      }
 
-      case 'test': {
-        this.playAudioFile(['/sounds/order_alert.mp3', '/sounds/new_order.mp3', '/sounds/success_ding.mp3']);
+      case 'test':
         this.playTone(880, 0.15, 'sine', 0.7, 0);
         this.playTone(1174, 0.25, 'triangle', 0.8, 0.12);
+        break;
+    }
+  }
+
+  private static triggerVibrationForType(type: SoundType): void {
+    switch (type) {
+      case 'new_order':
+        this.triggerVibration([300, 200, 300, 200, 400]);
+        break;
+      case 'delivery_urgent':
+        this.triggerVibration([200, 100, 200]);
+        break;
+      case 'order_accepted':
+        this.triggerVibration([100]);
+        break;
+      case 'order_ready':
+        this.triggerVibration([150]);
+        break;
+      case 'order_cancelled':
+        this.triggerVibration([200, 100, 200]);
+        break;
+      case 'order_delivered':
         this.triggerVibration([150, 100, 150]);
         break;
-      }
+      case 'test':
+        this.triggerVibration([150, 100, 150]);
+        break;
+    }
+  }
+
+  /**
+   * Play a one-shot notification chime or alert tone.
+   * Tries custom audio first. ONLY falls back to synthesized tone if custom fails with an error.
+   * Never plays both simultaneously.
+   */
+  static async playSound(type: SoundType): Promise<void> {
+    this.unlockAudio();
+    const settings = this.getSettings();
+    if (settings.muted) return;
+
+    if (type === 'new_order' && !settings.newOrderAlarm) return;
+    if (type === 'order_delivered' && !settings.deliveryCompletedChime) return;
+
+    this.triggerVibrationForType(type);
+
+    const soundFilesMap: Record<SoundType, string[]> = {
+      new_order: ['/sounds/order_alert.mp3', '/sounds/order_alert.wav', '/sounds/new_order.mp3', '/sounds/new_order.wav'],
+      delivery_urgent: ['/sounds/system_alert.mp3', '/sounds/delivery_chime.mp3'],
+      order_accepted: ['/sounds/order_confirmed.mp3', '/sounds/success_ding.mp3'],
+      order_ready: ['/sounds/success_ding.mp3', '/sounds/delivery_chime.mp3'],
+      order_cancelled: ['/sounds/cancel_buzz.mp3'],
+      order_delivered: [
+        '/sounds/delivery_completed.mp3',
+        '/sounds/delivery_completed.wav',
+        '/sounds/order_delivered.mp3',
+        '/sounds/order_delivered.wav',
+        '/sounds/delivery_chime.mp3'
+      ],
+      soft_pop: ['/sounds/soft_pop.mp3'],
+      test: ['/sounds/order_alert.mp3', '/sounds/new_order.mp3', '/sounds/success_ding.mp3']
+    };
+
+    const files = soundFilesMap[type] || [];
+    try {
+      await this.playCustomAudio(files);
+      return; // Success - don't play synth
+    } catch (err) {
+      console.warn(`[Sound] Custom audio failed for ${type}:`, err);
+      this.playSynthesizedTone(type); // Fallback only
     }
   }
 
