@@ -269,6 +269,7 @@ export const PersistentActiveOrderSheet: React.FC = () => {
   const isAccepted = currentOrder.status === 'accepted';
   const isPreparing = currentOrder.status === 'preparing';
   const isReady = currentOrder.status === 'ready';
+  const isDeliveryInTransit = ['partner_assigned', 'picked_up', 'out_for_delivery'].includes(currentOrder.status);
 
   const totalItemsCount = (currentOrder.items || []).reduce((acc, it) => acc + (it.quantity || 1), 0);
   const timeElapsed = currentOrder.createdAt 
@@ -277,7 +278,7 @@ export const PersistentActiveOrderSheet: React.FC = () => {
 
   // Primary action button dispatcher
   const handlePrimaryAction = async () => {
-    if (!currentOrder) return;
+    if (!currentOrder || isDeliveryInTransit) return;
 
     if (isPending) {
       SoundAlertEngine.stopAlarm();
@@ -448,6 +449,21 @@ export const PersistentActiveOrderSheet: React.FC = () => {
                     <Flame className="w-3 h-3 text-amber-400 animate-bounce" />
                     PREPARING
                   </span>
+                ) : currentOrder.status === 'partner_assigned' ? (
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-sky-500/20 text-sky-300 border border-sky-500/30 flex items-center gap-1">
+                    <Bike className="w-3 h-3 text-sky-400" />
+                    RIDER ASSIGNED
+                  </span>
+                ) : currentOrder.status === 'picked_up' ? (
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 flex items-center gap-1">
+                    <PackageCheck className="w-3 h-3 text-cyan-400" />
+                    PICKED UP
+                  </span>
+                ) : currentOrder.status === 'out_for_delivery' ? (
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
+                    <Truck className="w-3 h-3 text-indigo-400" />
+                    ON THE WAY
+                  </span>
                 ) : (
                   <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
                     <BellRing className="w-3 h-3 text-emerald-400" />
@@ -532,6 +548,12 @@ export const PersistentActiveOrderSheet: React.FC = () => {
                       ? 'bg-[#57854d]/20 text-[#a4c29c] border border-[#57854d]/40' 
                       : isPreparing 
                       ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' 
+                      : currentOrder.status === 'partner_assigned'
+                      ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                      : currentOrder.status === 'picked_up'
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                      : currentOrder.status === 'out_for_delivery'
+                      ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'
                       : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                   }`}>
                     {currentOrder.status.replace(/_/g, ' ')}
@@ -607,7 +629,7 @@ export const PersistentActiveOrderSheet: React.FC = () => {
                       >
                         <span>{ord.orderNumber || `#${ord.id.slice(0, 5)}`}</span>
                         <span className="text-[10px] opacity-80 uppercase">
-                          • {ord.status === 'preparing' ? 'Baking' : ord.status}
+                          • {ord.status === 'preparing' ? 'Baking' : ord.status === 'partner_assigned' ? 'Assigned' : ord.status === 'picked_up' ? 'Picked Up' : ord.status === 'out_for_delivery' ? 'On Way' : ord.status}
                         </span>
                       </button>
                     );
@@ -686,6 +708,69 @@ export const PersistentActiveOrderSheet: React.FC = () => {
                 </div>
               </div>
 
+              {/* Delivery Partner Dispatch / Tracking Card */}
+              {(isDeliveryInTransit || currentOrder.deliveryPartnerName || currentOrder.fulfillmentType === 'delivery') && (
+                <div className={`p-3.5 rounded-2xl border space-y-2.5 text-xs ${
+                  isDeliveryInTransit
+                    ? 'bg-[#15231c] border-sky-500/40 shadow-lg shadow-sky-950/20'
+                    : 'bg-[#121a15] border-[#26332a]'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-[#7ba372] uppercase tracking-wider block">
+                      Delivery Tracking & Dispatch
+                    </span>
+                    {isDeliveryInTransit && (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-sky-500/20 text-sky-300 border border-sky-500/40">
+                        {currentOrder.status === 'out_for_delivery'
+                          ? '🚀 En Route to Customer'
+                          : currentOrder.status === 'picked_up'
+                          ? '📦 Picked Up by Partner'
+                          : '🛵 Partner En Route to Restaurant'}
+                      </span>
+                    )}
+                  </div>
+
+                  {currentOrder.deliveryPartnerName ? (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                          currentOrder.status === 'out_for_delivery'
+                            ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
+                            : currentOrder.status === 'picked_up'
+                            ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                            : 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                        }`}>
+                          <Bike className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <strong className="text-white text-sm block">{currentOrder.deliveryPartnerName}</strong>
+                          <span className="text-[11px] text-[#a4c29c]">
+                            {currentOrder.deliveryPartnerPhone ? `Phone: ${currentOrder.deliveryPartnerPhone}` : 'Assigned Delivery Partner'}
+                          </span>
+                        </div>
+                      </div>
+                      {currentOrder.deliveryPartnerPhone && (
+                        <a
+                          href={`tel:${currentOrder.deliveryPartnerPhone}`}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 font-bold flex items-center gap-1.5 transition text-xs"
+                        >
+                          <Phone className="w-3.5 h-3.5" /> Call Partner
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between text-[#a4c29c]">
+                      <span>No delivery partner assigned yet</span>
+                      {currentOrder.fulfillmentType === 'delivery' && (
+                        <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/15 text-amber-300 font-bold border border-amber-500/30">
+                          Awaiting Dispatch
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Special Instructions / Notes Banner */}
               {((currentOrder as any).deliveryInstructions || (currentOrder as any).customerNotes || (currentOrder as any).notes || (currentOrder as any).instructions) && (
                 <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-2">
@@ -752,43 +837,6 @@ export const PersistentActiveOrderSheet: React.FC = () => {
               {/* ============================================================== */}
               {sheetMode === 'expanded' && (
                 <>
-                  {/* Delivery Partner / Dispatch Status */}
-                  <div className="p-3.5 rounded-2xl bg-[#121a15] border border-[#26332a] space-y-2 text-xs">
-                    <span className="text-[10px] font-bold text-[#7ba372] uppercase tracking-wider block">
-                      Delivery Partner Dispatch Status
-                    </span>
-                    {currentOrder.deliveryPartnerName ? (
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                            <Bike className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <strong className="text-white text-sm block">{currentOrder.deliveryPartnerName}</strong>
-                            <span className="text-[11px] text-[#a4c29c]">Assigned Delivery Partner</span>
-                          </div>
-                        </div>
-                        {currentOrder.deliveryPartnerPhone && (
-                          <a
-                            href={`tel:${currentOrder.deliveryPartnerPhone}`}
-                            className="px-3 py-1.5 rounded-xl bg-[#1b251d] hover:bg-[#232f26] border border-[#26332a] text-[#c6a052] font-bold"
-                          >
-                            Call Partner
-                          </a>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between text-[#a4c29c]">
-                        <span>No delivery partner assigned yet</span>
-                        {currentOrder.fulfillmentType === 'delivery' && (
-                          <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/15 text-amber-300 font-bold border border-amber-500/30">
-                            Awaiting Dispatch
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
                   {/* Financial Breakdown & Payment Info */}
                   <div className="p-4 rounded-2xl bg-[#121a15] border border-[#26332a] space-y-2 text-xs">
                     <div className="flex justify-between text-[#a4c29c]">
@@ -875,59 +923,109 @@ export const PersistentActiveOrderSheet: React.FC = () => {
 
             {/* Bottom Primary Action Bar */}
             <div className="shrink-0 p-4 border-t border-[#26332a] bg-[#121a15] space-y-2">
-              <div className="flex items-center gap-2">
-                {/* Primary Transition Action */}
-                <button
-                  onClick={handlePrimaryAction}
-                  disabled={isActionLoading}
-                  className={`flex-1 py-3 px-4 rounded-2xl font-black text-sm tracking-wide transition shadow-lg flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50 ${
-                    isPending
-                      ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
-                      : isAccepted
-                      ? 'bg-[#57854d] hover:bg-[#436b3b] text-white shadow-green-950/40'
-                      : isPreparing
-                      ? 'bg-[#c6a052] hover:bg-[#d8b264] text-black shadow-amber-950/40'
-                      : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40'
-                  }`}
-                >
-                  {isPending ? (
-                    <>
-                      <Check className="w-4 h-4 stroke-[3]" />
-                      <span>ACCEPT ORDER</span>
-                    </>
-                  ) : isAccepted ? (
-                    <>
-                      <Flame className="w-4 h-4" />
-                      <span>START PREPARING (SEND TO OVEN)</span>
-                    </>
-                  ) : isPreparing ? (
-                    <>
-                      <BellRing className="w-4 h-4" />
-                      <span>MARK FOOD AS READY</span>
-                    </>
-                  ) : currentOrder.fulfillmentType === 'delivery' ? (
-                    <>
-                      <Truck className="w-4 h-4" />
-                      <span>DISPATCH / OUT FOR DELIVERY</span>
-                    </>
-                  ) : (
-                    <>
-                      <Check className="w-4 h-4 stroke-[3]" />
-                      <span>COMPLETE ORDER / HANDOVER</span>
-                    </>
+              {isDeliveryInTransit ? (
+                /* Read-Only Delivery Tracking View (No kitchen action buttons) */
+                <div className="p-3.5 rounded-2xl bg-[#162118] border border-sky-500/30 flex items-center justify-between gap-3 shadow-lg">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                      currentOrder.status === 'out_for_delivery'
+                        ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30'
+                        : currentOrder.status === 'picked_up'
+                        ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                        : 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                    }`}>
+                      {currentOrder.status === 'out_for_delivery' ? (
+                        <Truck className="w-5 h-5 animate-pulse" />
+                      ) : currentOrder.status === 'picked_up' ? (
+                        <PackageCheck className="w-5 h-5" />
+                      ) : (
+                        <Bike className="w-5 h-5" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black uppercase tracking-wider text-white">
+                          {currentOrder.status === 'out_for_delivery'
+                            ? 'Out for Delivery'
+                            : currentOrder.status === 'picked_up'
+                            ? 'Order Picked Up'
+                            : 'Rider Assigned'}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30 uppercase">
+                          In Transit (Read-Only)
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#a4c29c] truncate mt-0.5">
+                        {currentOrder.deliveryPartnerName
+                          ? `Rider: ${currentOrder.deliveryPartnerName}${currentOrder.deliveryPartnerPhone ? ` • ${currentOrder.deliveryPartnerPhone}` : ''}`
+                          : 'Delivery partner coordinating with customer'}
+                      </p>
+                    </div>
+                  </div>
+                  {currentOrder.deliveryPartnerPhone && (
+                    <a
+                      href={`tel:${currentOrder.deliveryPartnerPhone}`}
+                      className="px-3 py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/40 text-sky-300 font-bold text-xs flex items-center gap-1.5 shrink-0 transition"
+                    >
+                      <Phone className="w-3.5 h-3.5" /> Call Rider
+                    </a>
                   )}
-                </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  {/* Primary Transition Action */}
+                  <button
+                    onClick={handlePrimaryAction}
+                    disabled={isActionLoading}
+                    className={`flex-1 py-3 px-4 rounded-2xl font-black text-sm tracking-wide transition shadow-lg flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50 ${
+                      isPending
+                        ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
+                        : isAccepted
+                        ? 'bg-[#57854d] hover:bg-[#436b3b] text-white shadow-green-950/40'
+                        : isPreparing
+                        ? 'bg-[#c6a052] hover:bg-[#d8b264] text-black shadow-amber-950/40'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40'
+                    }`}
+                  >
+                    {isPending ? (
+                      <>
+                        <Check className="w-4 h-4 stroke-[3]" />
+                        <span>ACCEPT ORDER</span>
+                      </>
+                    ) : isAccepted ? (
+                      <>
+                        <Flame className="w-4 h-4" />
+                        <span>START PREPARING (SEND TO OVEN)</span>
+                      </>
+                    ) : isPreparing ? (
+                      <>
+                        <BellRing className="w-4 h-4" />
+                        <span>MARK FOOD AS READY</span>
+                      </>
+                    ) : currentOrder.fulfillmentType === 'delivery' ? (
+                      <>
+                        <Truck className="w-4 h-4" />
+                        <span>DISPATCH / OUT FOR DELIVERY</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4 stroke-[3]" />
+                        <span>COMPLETE ORDER / HANDOVER</span>
+                      </>
+                    )}
+                  </button>
 
-                {/* Reject / Cancel Trigger */}
-                <button
-                  onClick={() => setRejectModalOpen(true)}
-                  disabled={isActionLoading}
-                  className="py-3 px-4 rounded-2xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 font-bold text-xs transition active:scale-98 disabled:opacity-50"
-                  title="Reject or cancel order"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+                  {/* Reject / Cancel Trigger */}
+                  <button
+                    onClick={() => setRejectModalOpen(true)}
+                    disabled={isActionLoading}
+                    className="py-3 px-4 rounded-2xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 font-bold text-xs transition active:scale-98 disabled:opacity-50"
+                    title="Reject or cancel order"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
 
               {/* View mode toggle prompt */}
               <div className="flex justify-between items-center text-[11px] text-[#7ba372] pt-1">
