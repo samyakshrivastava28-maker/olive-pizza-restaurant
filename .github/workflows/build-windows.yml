@@ -7,6 +7,10 @@ on:
       - 'v*'
   workflow_dispatch:
 
+concurrency:
+  group: release-windows-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -49,6 +53,7 @@ jobs:
           name: OlivePizzaRestaurant-Windows-Installer
           path: artifact/*.exe
           retention-days: 30
+          if-no-files-found: error
 
       # Publish to GitHub Release (Only Latest Commit Files)
       - name: Publish to GitHub Release
