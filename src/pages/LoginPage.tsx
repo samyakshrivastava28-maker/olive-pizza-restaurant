@@ -42,6 +42,13 @@ export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from?.pathname || '/dashboard';
+  const { isAuthorized } = useManagerStore();
+
+  React.useEffect(() => {
+    if (isAuthorized) {
+      navigate(from, { replace: true });
+    }
+  }, [isAuthorized, navigate, from]);
 
   const formatAuthError = (err: any) => {
     const code = err?.code || '';

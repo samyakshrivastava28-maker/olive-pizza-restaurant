@@ -1,6 +1,8 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+
+export { signInWithCustomToken };
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAqkcY-WQrW3WoZWRrv8oo7MTAI_nVrLw4",
@@ -15,6 +17,9 @@ export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfi
 export const auth = getAuth(app);
 // Apply default device/browser preference for Phone Auth & reCAPTCHA language
 auth.useDeviceLanguage();
+if (typeof window !== 'undefined') {
+  (window as any).__olive_auth = auth;
+}
 export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });

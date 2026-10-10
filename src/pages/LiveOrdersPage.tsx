@@ -83,6 +83,7 @@ export const LiveOrdersPage: React.FC = () => {
   const [selectedStatusTab, setSelectedStatusTab] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedOrderDetails, setSelectedOrderDetails] = useState<Order | null>(null);
+  const [prepTimes, setPrepTimes] = useState<Record<string, number>>({});
 
   // Auto-focus and open order modal if navigated via notification tap (?orderId=...)
   useEffect(() => {
@@ -126,8 +127,8 @@ export const LiveOrdersPage: React.FC = () => {
     return true;
   });
 
-  const handleStatusChange = async (orderId: string, nextStatus: OrderStatus) => {
-    const res = await updateOrderStatus(orderId, nextStatus);
+  const handleStatusChange = async (orderId: string, nextStatus: OrderStatus, reason?: string, estimatedPrepMinutes?: number) => {
+    const res = await updateOrderStatus(orderId, nextStatus, reason, estimatedPrepMinutes);
     if (res && res.success) {
       toast.success(`Order moved to ${nextStatus.toUpperCase().replace(/_/g, ' ')}`);
       if (selectedOrderDetails?.id === orderId) {
@@ -261,8 +262,11 @@ export const LiveOrdersPage: React.FC = () => {
             const isReady = order.status === 'ready';
             const isOut = order.status === 'out_for_delivery' || order.status === 'partner_assigned';
 
-            const formattedTime = order.createdAt ? format(new Date(order.createdAt), 'HH:mm') : '';
-            const relativeTime = order.createdAt ? formatDistanceToNow(new Date(order.createdAt), { addSuffix: true }) : '';
+            const rawDate: any = order.createdAt;
+            const parsedDate = rawDate?.toDate ? rawDate.toDate() : (rawDate?._seconds ? new Date(rawDate._seconds * 1000) : (rawDate ? new Date(rawDate) : null));
+            const isValidDate = parsedDate && !isNaN(parsedDate.getTime());
+            const formattedTime = isValidDate ? format(parsedDate, 'HH:mm') : '';
+            const relativeTime = isValidDate ? formatDistanceToNow(parsedDate, { addSuffix: true }) : '';
 
             return (
               <div
@@ -418,23 +422,83 @@ export const LiveOrdersPage: React.FC = () => {
                 {/* Status Action Buttons */}
                 <div className="space-y-2 pt-1">
                   {isPending && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => handleStatusChange(order.id, 'preparing')}
-                        disabled={isActionLoading}
-                        className="py-2.5 rounded-xl bg-[#57854d] hover:bg-[#426939] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all disabled:opacity-50"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        Accept Order
-                      </button>
-                      <button
-                        onClick={() => setRejectOrderId(order.id)}
-                        disabled={isActionLoading}
-                        className="py-2.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 font-bold text-xs flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                        Reject
-                      </button>
+                    <div className="space-y-2.5">
+                      {/* Preparation Time Adjuster */}
+                      <div className="p-2.5 rounded-xl bg-[#0d120f] border border-[#26332a] text-xs">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[#a4c29c] font-medium flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-[#c6a052]" />
+                            Kitchen Prep Time:
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const current = prepTimes[order.id] ?? order.estimatedPreparationMinutes ?? 15;
+                                setPrepTimes(prev => ({ ...prev, [order.id]: Math.max(5, current - 5) }));
+                              }}
+                              className="w-6 h-6 rounded-lg bg-[#1b241e] border border-[#26332a] text-[#a4c29c] hover:text-white font-bold flex items-center justify-center transition-colors text-sm"
+                              title="Decrease 5 minutes"
+                            >
+                              -
+                            </button>
+                            <span className="font-mono font-extrabold text-[#c6a052] px-2 py-0.5 rounded bg-[#1b241e] border border-[#26332a] text-xs min-w-[38px] text-center">
+                              {(prepTimes[order.id] ?? order.estimatedPreparationMinutes ?? 15)}m
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const current = prepTimes[order.id] ?? order.estimatedPreparationMinutes ?? 15;
+                                setPrepTimes(prev => ({ ...prev, [order.id]: Math.min(90, current + 5) }));
+                              }}
+                              className="w-6 h-6 rounded-lg bg-[#1b241e] border border-[#26332a] text-[#a4c29c] hover:text-white font-bold flex items-center justify-center transition-colors text-sm"
+                              title="Increase 5 minutes"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Quick Presets */}
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {[10, 15, 20, 30].map(mins => {
+                            const selected = (prepTimes[order.id] ?? order.estimatedPreparationMinutes ?? 15) === mins;
+                            return (
+                              <button
+                                key={mins}
+                                type="button"
+                                onClick={() => setPrepTimes(prev => ({ ...prev, [order.id]: mins }))}
+                                className={`py-1 rounded-lg text-[10px] font-bold font-mono transition-all ${
+                                  selected
+                                    ? 'bg-[#c6a052] text-black shadow-sm'
+                                    : 'bg-[#141b16] text-[#7ba372] hover:text-[#a4c29c] border border-[#26332a]'
+                                }`}
+                              >
+                                {mins}m
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => handleStatusChange(order.id, 'preparing', undefined, prepTimes[order.id] ?? order.estimatedPreparationMinutes ?? 15)}
+                          disabled={isActionLoading}
+                          className="py-2.5 rounded-xl bg-[#57854d] hover:bg-[#426939] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all disabled:opacity-50"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          Accept Order
+                        </button>
+                        <button
+                          onClick={() => setRejectOrderId(order.id)}
+                          disabled={isActionLoading}
+                          className="py-2.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 font-bold text-xs flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          Reject
+                        </button>
+                      </div>
                     </div>
                   )}
 

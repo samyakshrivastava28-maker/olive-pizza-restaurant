@@ -14,6 +14,26 @@ import type { Order } from '../types/restaurant';
 import { formatDistanceToNow } from 'date-fns';
 import { FleetLiveMap } from '../components/delivery/FleetLiveMap';
 
+const safeFormatDistance = (val: any): string => {
+  if (!val) return 'Online';
+  try {
+    let d: Date;
+    if (typeof val?.toDate === 'function') {
+      d = val.toDate();
+    } else if (typeof val?._seconds === 'number') {
+      d = new Date(val._seconds * 1000);
+    } else if (typeof val === 'number' || typeof val === 'string') {
+      d = new Date(val);
+    } else {
+      return 'Online';
+    }
+    if (isNaN(d.getTime())) return 'Online';
+    return formatDistanceToNow(d, { addSuffix: true });
+  } catch {
+    return 'Online';
+  }
+};
+
 export const DeliveryManagementPage: React.FC = () => {
   const { 
     liveOrders, 
@@ -154,7 +174,7 @@ export const DeliveryManagementPage: React.FC = () => {
                     <div className="flex items-center justify-between text-[10px] text-[#7ba372] pt-1 border-t border-[#26332a]/50">
                       <span>Vehicle: {rider.vehicleType || 'Bike'}</span>
                       <span className="font-mono">
-                        {rider.lastSeen ? formatDistanceToNow(new Date(rider.lastSeen), { addSuffix: true }) : 'Online'}
+                        {safeFormatDistance(rider.lastSeen)}
                       </span>
                     </div>
                   </div>

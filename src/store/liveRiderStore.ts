@@ -73,9 +73,9 @@ export const useLiveRiderStore = create<LiveRiderFleetState>((set, get) => ({
           return;
         }
 
-        // Apply authoritative Supabase live coordinates if available
+        // Apply authoritative live telemetry
         const liveGps = latestGpsMap.get(id);
-        const isOnline = liveGps !== undefined ? liveGps.onlineStatus : rider.isOnline;
+        const isOnline = Boolean(rider.isOnline || (liveGps && liveGps.onlineStatus));
         const currentOrderId = liveGps?.activeOrderId || rider.currentOrderId;
         const status = isOnline ? (currentOrderId ? 'busy' : 'available') : 'offline';
 
@@ -206,9 +206,9 @@ export const useLiveRiderStore = create<LiveRiderFleetState>((set, get) => ({
               lng: Number(d.longitude),
               speed: Number(d.speed) || 0,
               heading: Number(d.heading) || 0,
-              lastUpdated: d.updatedAt || new Date().toISOString()
+              lastUpdated: d.updatedAt?.toDate ? d.updatedAt.toDate().toISOString() : d.updatedAt?._seconds ? new Date(d.updatedAt._seconds * 1000).toISOString() : (typeof d.updatedAt === 'string' ? d.updatedAt : new Date().toISOString())
             } : undefined,
-            lastSeen: d.lastSeen || d.updatedAt || new Date().toISOString(),
+            lastSeen: d.lastSeen?.toDate ? d.lastSeen.toDate().toISOString() : d.lastSeen?._seconds ? new Date(d.lastSeen._seconds * 1000).toISOString() : (typeof d.lastSeen === 'string' ? d.lastSeen : (d.updatedAt?.toDate ? d.updatedAt.toDate().toISOString() : d.updatedAt?._seconds ? new Date(d.updatedAt._seconds * 1000).toISOString() : (typeof d.updatedAt === 'string' ? d.updatedAt : new Date().toISOString()))),
             branchId: d.branchId || ''
           });
         });

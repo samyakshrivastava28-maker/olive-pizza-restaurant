@@ -75,7 +75,7 @@ interface ManagerState {
   subscribeToRestaurantStatus: (branchId: string) => () => void;
   toggleRestaurantStatus: (isOpen: boolean, reason?: string) => Promise<boolean>;
   fetchHistoricalOrders: (params?: { search?: string; status?: string; fulfillment?: string; dateRange?: string }) => Promise<void>;
-  updateOrderStatus: (orderId: string, nextStatus: OrderStatus, reason?: string) => Promise<{ success: boolean; error?: string }>;
+  updateOrderStatus: (orderId: string, nextStatus: OrderStatus, reason?: string, estimatedPreparationMinutes?: number) => Promise<{ success: boolean; error?: string; status?: OrderStatus }>;
   subscribeToRiders: (branchId: string) => () => void;
   sendNotification: (payload: { title: string; message: string; targetAudience: 'customers' | 'staff' | 'delivery' | 'all'; imageUrl?: string; deepLink?: string }) => Promise<boolean>;
   fetchNotificationHistory: () => Promise<void>;
@@ -623,7 +623,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
     }
   },
 
-  updateOrderStatus: async (orderId, nextStatus, reason) => {
+  updateOrderStatus: async (orderId, nextStatus, reason, estimatedPreparationMinutes) => {
     set({ isActionLoading: true });
     try {
       let endpoint = `/api/orders/${orderId}/status`;
@@ -631,6 +631,10 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
 
       if (nextStatus === 'preparing' || nextStatus === 'accepted') {
         endpoint = `/api/orders/${orderId}/accept`;
+        if (typeof estimatedPreparationMinutes === 'number' && estimatedPreparationMinutes > 0) {
+          body.estimatedPreparationMinutes = estimatedPreparationMinutes;
+          body.prepMinutes = estimatedPreparationMinutes;
+        }
       } else if (nextStatus === 'cancelled' || nextStatus === 'rejected') {
         endpoint = `/api/orders/${orderId}/reject`;
         body = { reason: reason || 'Rejected by restaurant manager' };
@@ -838,7 +842,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
                 heading: Number(d.location.heading) || 0,
                 lastUpdated: d.location.lastUpdated || new Date().toISOString()
               } : undefined,
-              lastSeen: d.lastSeen || d.updatedAt || new Date().toISOString(),
+              lastSeen: d.lastSeen?.toDate ? d.lastSeen.toDate().toISOString() : d.lastSeen?._seconds ? new Date(d.lastSeen._seconds * 1000).toISOString() : (typeof d.lastSeen === 'string' ? d.lastSeen : (d.updatedAt?.toDate ? d.updatedAt.toDate().toISOString() : d.updatedAt?._seconds ? new Date(d.updatedAt._seconds * 1000).toISOString() : (typeof d.updatedAt === 'string' ? d.updatedAt : new Date().toISOString()))),
               branchId: d.branchId || ''
             });
           });
