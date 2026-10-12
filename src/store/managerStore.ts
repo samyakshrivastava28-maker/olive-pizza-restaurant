@@ -163,7 +163,10 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
             requestedBranchId: branchId
           })
         }).then(resp => {
-          if (resp && !resp.authorized) {
+          const resumeEmail = (auth.currentUser?.email || '').toLowerCase().trim();
+          const resumeRole = String(resp?.user?.role || '').toLowerCase();
+          const resumeIsOwner = ['olivepizzarjn@gmail.com', 'webhub2811@gmail.com', 'olivepizzamaker@gmail.com'].includes(resumeEmail) || ['owner', 'platform_owner'].includes(resumeRole);
+          if (resp && (!resp.authorized || resumeIsOwner || !resumeRole)) {
             console.warn('[ManagerStore] Account revoked on app resume:', resp.reason);
             signOut(auth).catch(() => {});
             localStorage.removeItem('restaurant_manager_profile');
@@ -173,7 +176,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
               managerProfile: null,
               userRole: null,
               isAuthorized: false,
-              restrictedReason: resp.reason || 'This account or franchise has been deactivated by the store owner.',
+              restrictedReason: resumeIsOwner ? 'Owner accounts must use the Owner app. Ask the Owner to authorize a separate restaurant manager account.' : (resp.reason || 'This account is not authorized for Restaurant Management.'),
               restrictedEmail: auth.currentUser?.email || null
             });
           }
@@ -199,7 +202,11 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
             })
           });
 
-          if (resp && resp.authorized) {
+          const resolvedRole = String(resp?.user?.role || '').toLowerCase();
+          const isGlobalOwner = ['olivepizzarjn@gmail.com', 'webhub2811@gmail.com', 'olivepizzamaker@gmail.com'].includes(emailLower);
+          const isOwnerAccount = isGlobalOwner || ['owner', 'platform_owner'].includes(resolvedRole);
+
+          if (resp && resp.authorized && resolvedRole && !isOwnerAccount) {
             const u = resp.user;
             const profile: ManagerAccount = {
               uid: currentUser.uid,
@@ -233,8 +240,12 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
             return;
           } else {
             // Account not authorized for dashboard access
-            const denialReason = resp?.reason || 'This account is not authorized to use this Olive Pizza application.';
-            const code = resp?.code || 'UNAUTHORIZED';
+            const denialReason = isOwnerAccount
+              ? 'Owner accounts must use the Owner app. Ask the Owner to authorize a separate restaurant manager account.'
+              : (resp?.authorized && !resolvedRole
+                ? 'The authorization service did not return a valid role for this application.'
+                : (resp?.reason || 'This account is not authorized to use this Olive Pizza application.'));
+            const code = isOwnerAccount ? 'OWNER_APP_ONLY' : (resp?.authorized && !resolvedRole ? 'INVALID_APP_ROLE' : (resp?.code || 'UNAUTHORIZED'));
             console.warn('[ManagerStore] Access restricted for account:', emailLower, code, denialReason);
 
             SoundAlertEngine.stopAlarm();

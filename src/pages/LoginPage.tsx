@@ -115,6 +115,26 @@ export const LoginPage: React.FC = () => {
       });
 
       if (resp && resp.authorized) {
+        const resolvedRole = String(resp?.user?.role || '').toLowerCase();
+        const isGlobalOwner = ['olivepizzarjn@gmail.com', 'webhub2811@gmail.com', 'olivepizzamaker@gmail.com'].includes(emailLower);
+        if (isGlobalOwner || ['owner', 'platform_owner'].includes(resolvedRole) || !resolvedRole) {
+          const denialReason = (isGlobalOwner || ['owner', 'platform_owner'].includes(resolvedRole))
+            ? 'Owner accounts must use the Owner app. Ask the Owner to authorize a separate restaurant manager account.'
+            : 'The authorization service did not return a valid role for this application.';
+          await signOut(auth).catch(() => {});
+          useManagerStore.setState({
+            user: null,
+            managerProfile: null,
+            userRole: null,
+            isAuthorized: false,
+            isAuthChecking: false,
+            restrictedReason: denialReason,
+            restrictedEmail: emailLower
+          });
+          setError(denialReason);
+          return false;
+        }
+
         if (resp.requiresPin) {
           // Trigger 4-digit PIN verification modal
           setPendingAuth({ user, resp });
