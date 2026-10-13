@@ -10,7 +10,7 @@ import {
   X
 } from 'lucide-react';
 import { useManagerStore } from '../store/managerStore';
-import { fetchApi } from '../lib/api';
+import { fetchApi, fetchBranchMenuManagement, invalidateMenuCache } from '../lib/api';
 import toast from 'react-hot-toast';
 
 export const MenuManagementPage: React.FC = () => {
@@ -29,10 +29,16 @@ export const MenuManagementPage: React.FC = () => {
   const [localPrice, setLocalPrice] = useState('399');
   const [localDesc, setLocalDesc] = useState('');
 
-  const loadMenuManagement = async () => {
-    setLoading(true);
+  const loadMenuManagement = async (forceRefresh = false) => {
+    if (products.length === 0) {
+      setLoading(true);
+    }
     try {
-      const data = await fetchApi(`/api/menu/branch/${branchId}/management`);
+      const data = await fetchBranchMenuManagement(branchId, forceRefresh, (fresh) => {
+        if (fresh?.success && fresh.products) {
+          setProducts(fresh.products);
+        }
+      });
       if (data?.success && data.products) {
         setProducts(data.products);
       }
@@ -57,6 +63,7 @@ export const MenuManagementPage: React.FC = () => {
         body: JSON.stringify({ productId: product.id, isEnabled: nextState })
       });
       if (data?.success) {
+        invalidateMenuCache(branchId);
         setProducts(products.map(p => p.id === product.id ? { ...p, isEnabledForBranch: nextState } : p));
         toast.success(product.name + ' is now ' + (nextState ? 'ENABLED' : 'DISABLED') + ' for ' + branchName, { id: toastId });
       } else {
@@ -83,9 +90,10 @@ export const MenuManagementPage: React.FC = () => {
         })
       });
       if (data?.success) {
+        invalidateMenuCache(branchId);
         toast.success('Customization rules saved!', { id: toastId });
         setIsCustomizing(false);
-        loadMenuManagement();
+        loadMenuManagement(true);
       } else {
         toast.error(data?.error || 'Failed to save', { id: toastId });
       }
@@ -109,11 +117,12 @@ export const MenuManagementPage: React.FC = () => {
         })
       });
       if (data?.success) {
+        invalidateMenuCache(branchId);
         toast.success('Local item created (Dine-In/Takeaway only)!', { id: toastId });
         setIsLocalProductModal(false);
         setLocalName('');
         setLocalDesc('');
-        loadMenuManagement();
+        loadMenuManagement(true);
       } else {
         toast.error(data?.error || 'Failed to create', { id: toastId });
       }
@@ -152,7 +161,7 @@ export const MenuManagementPage: React.FC = () => {
             <span>+ Add Restaurant-Only Item</span>
           </button>
           <button
-            onClick={loadMenuManagement}
+            onClick={() => loadMenuManagement(true)}
             disabled={loading}
             className="p-2.5 bg-[#141b16] hover:bg-[#1c261f] border border-[#26332a] text-[#8a9e8f] rounded-xl text-xs transition"
           >

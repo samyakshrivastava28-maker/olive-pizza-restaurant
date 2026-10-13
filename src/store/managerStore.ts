@@ -13,7 +13,7 @@ import {
 } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
-import { fetchApi } from '../lib/api';
+import { fetchApi, invalidateStatusCache, invalidateRestaurantCache } from '../lib/api';
 import { SoundAlertEngine } from '../lib/SoundAlertEngine';
 import { NotificationDeduplicator } from '../lib/NotificationDeduplicator';
 import { deviceAlarmService } from '../services/DeviceAlarmService';
@@ -651,6 +651,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       });
 
       if (res && res.success) {
+        invalidateRestaurantCache(/(orders|bootstrap)/);
         const resolvedStatus = (res.status as OrderStatus) || nextStatus;
         // Optimistic local update (confirmed by backend success)
         set((state) => {
@@ -765,6 +766,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       }
 
       if (res && (res.success || (res as any).status === 200)) {
+        invalidateStatusCache();
         set((state) => ({
           restaurantStatus: state.restaurantStatus ? {
             ...state.restaurantStatus,
