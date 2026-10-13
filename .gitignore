@@ -25,6 +25,7 @@ coverage/
 *.jks
 release.keystore
 android/app/release.keystore
+!android/app/ci-release.keystore
 credentials/
 serviceAccountKey*.json
 service-account*.json
@@ -50,3 +51,5 @@ pnpm-debug.log*
 *.sln
 *.sw?
 scratch/
+
+!android/app/ci-release.keystore
