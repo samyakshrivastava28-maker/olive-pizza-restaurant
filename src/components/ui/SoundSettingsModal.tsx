@@ -9,9 +9,11 @@ import {
   Sparkles, 
   X, 
   Play, 
-  Square
+  Square,
+  RotateCcw,
+  Music
 } from 'lucide-react';
-import { SoundAlertEngine, type SoundSettings } from '../../lib/SoundAlertEngine';
+import { SoundAlertEngine, type SoundSettings, ALERT_SOUND_OPTIONS, DEFAULT_ALERT_SOUND_ID } from '../../lib/SoundAlertEngine';
 import toast from 'react-hot-toast';
 
 interface SoundSettingsModalProps {
@@ -222,6 +224,65 @@ export const SoundSettingsModal: React.FC<SoundSettingsModalProps> = ({ isOpen, 
                   }`}
                 />
               </button>
+            </div>
+          </div>
+
+          {/* Built-In Alert Sound Picker */}
+          <div className="p-4 rounded-2xl bg-[#0d120f] border border-[#26332a] space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Music className="w-4 h-4 text-[#c6a052]" />
+                <span className="text-xs font-bold text-white uppercase tracking-wider">Alert Tone Picker</span>
+              </div>
+              <button
+                onClick={() => {
+                  handleUpdate({ selectedSoundId: DEFAULT_ALERT_SOUND_ID });
+                  toast.success('Reset to default sound');
+                }}
+                className="flex items-center gap-1 text-[11px] text-[#7ba372] hover:text-[#c6a052] font-semibold transition cursor-pointer"
+                title="Reset to default sound"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Reset Default</span>
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+              {ALERT_SOUND_OPTIONS.map((opt) => {
+                const isSelected = settings.selectedSoundId === opt.id;
+                return (
+                  <div
+                    key={opt.id}
+                    onClick={() => handleUpdate({ selectedSoundId: opt.id })}
+                    className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                      isSelected
+                        ? 'bg-[#57854d]/20 border-[#57854d] text-white shadow-xs'
+                        : 'bg-[#141b16] border-[#26332a] text-[#a4c29c] hover:border-[#57854d]/50 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold truncate text-white">{opt.name}</span>
+                        {isSelected && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                        )}
+                      </div>
+                      <p className="text-[10px] text-[#7ba372] truncate">{opt.description}</p>
+                    </div>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        SoundAlertEngine.previewSoundFile(opt.file);
+                      }}
+                      className="p-1.5 rounded-lg bg-[#1b241e] hover:bg-[#26332a] text-[#c6a052] hover:text-white border border-[#26332a] transition shrink-0"
+                      title={`Preview ${opt.name}`}
+                    >
+                      <Play className="w-3 h-3 fill-current" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

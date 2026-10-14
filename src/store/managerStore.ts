@@ -372,6 +372,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       );
 
       // Subscribe to active orders with strict branch query scoping
+      let isFirstOrdersSnapshot = true;
       liveOrdersUnsub = onSnapshot(scopedQuery, (snapshot) => {
         const currentProfile = get().managerProfile;
         const profileFranchiseId = currentProfile?.franchiseId;
@@ -511,21 +512,47 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         activeList.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
         set({ liveOrders: activeList, isOrdersLoading: false });
 
-        // Continuous sound alarm: loop only for active unaccepted/pending orders placed within the last 15 minutes
+        // Sound alarm management: deduplicate by order ID and avoid continuously restarting sirens on every snapshot
         const now = Date.now();
-        const pendingCount = activeList.filter((o) => {
+        const pendingOrders = activeList.filter((o) => {
           if (o.status !== 'pending' && o.status !== 'pending_acceptance') return false;
           const orderTime = o.createdAt instanceof Date ? o.createdAt.getTime() : (o.createdAt ? new Date(o.createdAt).getTime() : 0);
           return !isNaN(orderTime) && orderTime > 0 && (now - orderTime < 15 * 60 * 1000);
-        }).length;
+        });
+        const pendingCount = pendingOrders.length;
         const currentStatus = get().restaurantStatus;
         const isRestaurantOpen = currentStatus ? (currentStatus.isOpen !== false && currentStatus.acceptingOrders !== false) : true;
         const isAlarmEnabled = deviceAlarmService.isAlarmEnabled();
 
-        // Guarantees alarm NEVER sounds when restaurant is closed or device alarm is disabled
-        if (pendingCount > 0 && isRestaurantOpen && isAlarmEnabled) {
-          SoundAlertEngine.startContinuousAlarm('new_order');
+        // On initial subscription snapshot, seed existing pending orders into deduplicator
+        // so reconnecting or refreshing the app never generates an old-order alarm storm
+        if (isFirstOrdersSnapshot) {
+          pendingOrders.forEach((o) => {
+            NotificationDeduplicator.record(`ORDER_NEW_ALERT:${o.id}`);
+          });
+          isFirstOrdersSnapshot = false;
         } else {
+          // On subsequent snapshots, only alarm if a genuinely new order arrived
+          let hasNewPendingOrder = false;
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+              const data = change.doc.data();
+              const s = (data.status || '').toLowerCase();
+              if (s === 'pending' || s === 'pending_acceptance') {
+                if (NotificationDeduplicator.shouldProcess(`ORDER_NEW_ALERT:${change.doc.id}`)) {
+                  hasNewPendingOrder = true;
+                }
+              }
+            }
+          });
+
+          if (hasNewPendingOrder && isRestaurantOpen && isAlarmEnabled) {
+            SoundAlertEngine.startContinuousAlarm('new_order');
+          }
+        }
+
+        // Guarantees alarm immediately silences when all pending orders are accepted/cleared, restaurant closes, or alarm is muted
+        if (pendingCount === 0 || !isRestaurantOpen || !isAlarmEnabled) {
           SoundAlertEngine.stopAlarm();
         }
       }, async (err) => {

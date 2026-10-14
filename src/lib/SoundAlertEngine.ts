@@ -26,12 +26,30 @@ export type SoundType =
   | 'soft_pop'         // Gentle informational update
   | 'test';            // Audio test tone
 
+export interface SoundOption {
+  id: string;
+  name: string;
+  description: string;
+  file: string;
+}
+
+export const ALERT_SOUND_OPTIONS: SoundOption[] = [
+  { id: 'olive_dispatch', name: 'Olive Pizza Dispatch', description: 'Commanding kitchen alarm siren', file: '/sounds/new_order.mp3' },
+  { id: 'ascending_chimes', name: 'Ascending Chimes', description: 'Bright melodic multi-tone chime', file: '/sounds/delivery_chime.mp3' },
+  { id: 'harmonic_chord', name: 'Harmonic Chord', description: 'Warm resonant acoustic chord', file: '/sounds/order_confirmed.mp3' },
+  { id: 'kitchen_bell', name: 'Kitchen Service Bell', description: 'Crisp high-clarity oven bell ding', file: '/sounds/success_ding.mp3' },
+  { id: 'celebration_fanfare', name: 'Celebration Fanfare', description: 'Uplifting victory fanfare chime', file: '/sounds/order_delivered.mp3' },
+];
+
+export const DEFAULT_ALERT_SOUND_ID = 'olive_dispatch';
+
 export interface SoundSettings {
   muted: boolean;
   volume: number; // 0.0 to 1.0
   newOrderAlarm: boolean; // Continuous alarm for unaccepted pending orders
   deliveryCompletedChime: boolean; // Single chime on delivered
   vibration: boolean; // Device vibration if supported
+  selectedSoundId: string;
 }
 
 const SETTINGS_KEY = 'olive_sound_settings_v1';
@@ -42,6 +60,7 @@ const DEFAULT_SETTINGS: SoundSettings = {
   newOrderAlarm: true,
   deliveryCompletedChime: true,
   vibration: true,
+  selectedSoundId: DEFAULT_ALERT_SOUND_ID,
 };
 
 export class SoundAlertEngine {
@@ -66,6 +85,7 @@ export class SoundAlertEngine {
           ...parsed,
           // Ensure volume stays bounded
           volume: typeof parsed.volume === 'number' ? Math.max(0, Math.min(1, parsed.volume)) : DEFAULT_SETTINGS.volume,
+          selectedSoundId: parsed.selectedSoundId || DEFAULT_ALERT_SOUND_ID,
         };
       }
     } catch {}
@@ -312,21 +332,21 @@ export class SoundAlertEngine {
 
     this.triggerVibrationForType(type);
 
+    const selectedOption = ALERT_SOUND_OPTIONS.find(o => o.id === settings.selectedSoundId) || ALERT_SOUND_OPTIONS[0];
+
     const soundFilesMap: Record<SoundType, string[]> = {
-      new_order: ['/sounds/order_alert.mp3', '/sounds/order_alert.wav', '/sounds/new_order.mp3', '/sounds/new_order.wav'],
+      new_order: [selectedOption.file, '/sounds/order_alert.mp3', '/sounds/new_order.mp3'],
       delivery_urgent: ['/sounds/system_alert.mp3', '/sounds/delivery_chime.mp3'],
       order_accepted: ['/sounds/order_confirmed.mp3', '/sounds/success_ding.mp3'],
       order_ready: ['/sounds/success_ding.mp3', '/sounds/delivery_chime.mp3'],
       order_cancelled: ['/sounds/cancel_buzz.mp3'],
       order_delivered: [
         '/sounds/delivery_completed.mp3',
-        '/sounds/delivery_completed.wav',
         '/sounds/order_delivered.mp3',
-        '/sounds/order_delivered.wav',
         '/sounds/delivery_chime.mp3'
       ],
       soft_pop: ['/sounds/soft_pop.mp3'],
-      test: ['/sounds/order_alert.mp3', '/sounds/new_order.mp3', '/sounds/success_ding.mp3']
+      test: [selectedOption.file, '/sounds/order_alert.mp3', '/sounds/new_order.mp3', '/sounds/success_ding.mp3']
     };
 
     const files = soundFilesMap[type] || [];
@@ -337,6 +357,19 @@ export class SoundAlertEngine {
       console.warn(`[Sound] Custom audio failed for ${type}:`, err);
       this.playSynthesizedTone(type); // Fallback only
     }
+  }
+
+  /**
+   * Preview a specific sound file without changing settings.
+   */
+  static previewSoundFile(fileUrl: string): void {
+    try {
+      this.unlockAudio();
+      const settings = this.getSettings();
+      const audio = new Audio(fileUrl);
+      audio.volume = settings.muted ? 0 : settings.volume;
+      audio.play().catch(() => {});
+    } catch {}
   }
 
   /**
