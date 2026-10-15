@@ -30,6 +30,7 @@ import { SoundAlertEngine } from '../../lib/SoundAlertEngine';
 import type { Order, OrderStatus } from '../../types/restaurant';
 import { format, formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
+import { AssignRiderModal } from './AssignRiderModal';
 
 export type SheetMode = 'minimized' | 'half' | 'expanded';
 
@@ -199,6 +200,7 @@ export const PersistentActiveOrderSheet: React.FC = () => {
   // Reject / Cancel modal state
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [assignRiderModalOpen, setAssignRiderModalOpen] = useState(false);
 
   // Swipe support on mobile/touch screens
   const touchStartX = useRef<number | null>(null);
@@ -306,12 +308,7 @@ export const PersistentActiveOrderSheet: React.FC = () => {
       }
     } else if (isReady) {
       if (currentOrder.fulfillmentType === 'delivery') {
-        const res = await updateOrderStatus(currentOrder.id, 'out_for_delivery');
-        if (res && res.success) {
-          toast.success('Order dispatched with delivery partner!');
-        } else {
-          toast.error(res?.error || 'Failed to dispatch order');
-        }
+        setAssignRiderModalOpen(true);
       } else {
         const res = await updateOrderStatus(currentOrder.id, 'delivered');
         if (res && res.success) {
@@ -1121,6 +1118,16 @@ export const PersistentActiveOrderSheet: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Manual & Auto Rider Assignment Modal */}
+      {currentOrder && (
+        <AssignRiderModal
+          isOpen={assignRiderModalOpen}
+          order={currentOrder}
+          onClose={() => setAssignRiderModalOpen(false)}
+          onAssigned={() => setAssignRiderModalOpen(false)}
+        />
       )}
     </>
   );

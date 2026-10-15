@@ -27,6 +27,7 @@ import { FleetLiveMap } from '../components/delivery/FleetLiveMap';
 import type { Order, OrderStatus } from '../types/restaurant';
 import { format, formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
+import { AssignRiderModal } from '../components/orders/AssignRiderModal';
 
 const formatTimeSafe = (val: any) => {
   if (!val) return '—';
@@ -83,6 +84,7 @@ export const LiveOrdersPage: React.FC = () => {
   const [selectedStatusTab, setSelectedStatusTab] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedOrderDetails, setSelectedOrderDetails] = useState<Order | null>(null);
+  const [assignRiderOrder, setAssignRiderOrder] = useState<Order | null>(null);
   const [prepTimes, setPrepTimes] = useState<Record<string, number>>({});
 
   // Auto-focus and open order modal if navigated via notification tap (?orderId=...)
@@ -517,12 +519,12 @@ export const LiveOrdersPage: React.FC = () => {
                     <div className="grid grid-cols-2 gap-2">
                       {order.fulfillmentType === 'delivery' ? (
                         <button
-                          onClick={() => handleStatusChange(order.id, 'out_for_delivery')}
+                          onClick={() => setAssignRiderOrder(order)}
                           disabled={isActionLoading}
-                          className="py-2.5 rounded-xl bg-[#10b981] hover:bg-[#059669] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all disabled:opacity-50"
+                          className="py-2.5 rounded-xl bg-[#57854d] hover:bg-[#446c3b] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all disabled:opacity-50"
                         >
-                          <Truck className="w-3.5 h-3.5" />
-                          Out for Delivery
+                          <Bike className="w-3.5 h-3.5" />
+                          Assign Rider
                         </button>
                       ) : (
                         <button
@@ -877,6 +879,14 @@ export const LiveOrdersPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Manual & Auto Rider Assignment Modal */}
+      <AssignRiderModal
+        isOpen={Boolean(assignRiderOrder)}
+        order={assignRiderOrder}
+        onClose={() => setAssignRiderOrder(null)}
+        onAssigned={() => setAssignRiderOrder(null)}
+      />
     </div>
   );
 };
