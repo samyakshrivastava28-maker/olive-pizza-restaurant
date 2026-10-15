@@ -67,85 +67,49 @@ export const AssignRiderModal: React.FC<AssignRiderModalProps> = ({
     // 1. Fetch eligible riders from authoritative backend endpoint
     fetchApi(`/api/orders/${order.id}/eligible-riders`)
       .then(async (res) => {
-        if (!res) return { riders: [] };
+        if (!res) throw new Error('Failed to load eligible riders from server');
         return res;
       })
       .then((data) => {
         if (!isMounted) return;
-        const apiRiders = Array.isArray(data?.riders) ? data.riders : [];
-        
-        // Merge with client live store riders strictly for current branch to ensure fresh roster
-        const branchFleet = (fleetRiders || []).filter(
-          (r) => !r.branchId || r.branchId === activeBranchId || activeBranchId === 'all'
-        );
+        if (!data || !Array.isArray(data.riders)) {
+          throw new Error(data?.error || 'Invalid eligible riders response from server');
+        }
 
-        const mergedMap = new Map<string, EligibleRiderItem>();
+        const apiRiders = data.riders.map((ar: any) => ({
+          uid: ar.uid || ar.id,
+          name: ar.name || 'Rider',
+          phone: ar.phone || '',
+          distanceMeters: ar.distanceMeters,
+          latitude: ar.latitude,
+          longitude: ar.longitude,
+          isOnline: Boolean(ar.isOnline ?? true),
+          status: ar.status || 'available',
+          vehicleType: ar.vehicleType || 'Bike',
+          vehicleNumber: ar.vehicleNumber || ''
+        }));
 
-        // First populate from live fleet store
-        branchFleet.forEach((r) => {
-          mergedMap.set(r.id, {
-            uid: r.id,
-            name: r.name || 'Rider',
-            phone: r.phone || '',
-            distanceMeters: undefined,
-            isOnline: Boolean(r.isOnline),
-            status: r.status || (r.isOnline ? 'available' : 'offline'),
-            vehicleType: r.vehicleType || 'Bike',
-            vehicleNumber: r.vehicleNumber || ''
-          });
-        });
-
-        // Then overlay API eligible riders with scored distances & coordinates
-        apiRiders.forEach((ar: any) => {
-          const uid = ar.uid || ar.id;
-          const existing = mergedMap.get(uid);
-          mergedMap.set(uid, {
-            uid,
-            name: ar.name || existing?.name || 'Rider',
-            phone: ar.phone || existing?.phone || '',
-            distanceMeters: ar.distanceMeters,
-            latitude: ar.latitude,
-            longitude: ar.longitude,
-            isOnline: true,
-            status: 'available',
-            vehicleType: existing?.vehicleType || 'Bike',
-            vehicleNumber: existing?.vehicleNumber || ''
-          });
-        });
-
-        const list = Array.from(mergedMap.values());
         // Sort: available and online first, then by closest distance
-        list.sort((a, b) => {
+        apiRiders.sort((a: EligibleRiderItem, b: EligibleRiderItem) => {
           const aOnline = a.isOnline ? 1 : 0;
           const bOnline = b.isOnline ? 1 : 0;
           if (aOnline !== bOnline) return bOnline - aOnline;
           return (a.distanceMeters ?? 99999) - (b.distanceMeters ?? 99999);
         });
 
-        setEligibleRiders(list);
-        if (list.length > 0 && list[0].isOnline) {
-          setSelectedRiderUid(list[0].uid);
+        setEligibleRiders(apiRiders);
+        if (apiRiders.length > 0 && apiRiders[0].isOnline) {
+          setSelectedRiderUid(apiRiders[0].uid);
+        } else {
+          setSelectedRiderUid('');
         }
       })
-      .catch((err) => {
+      .catch((err: any) => {
         if (!isMounted) return;
-        console.warn('[AssignRiderModal] Error loading eligible riders:', err);
-        // Fallback to local fleet store
-        const branchFleet = (fleetRiders || [])
-          .filter((r) => !r.branchId || r.branchId === activeBranchId)
-          .map((r) => ({
-            uid: r.id,
-            name: r.name || 'Rider',
-            phone: r.phone || '',
-            isOnline: Boolean(r.isOnline),
-            status: r.status || 'available',
-            vehicleType: r.vehicleType || 'Bike',
-            vehicleNumber: r.vehicleNumber || ''
-          }));
-        setEligibleRiders(branchFleet);
-        if (branchFleet.length > 0) {
-          setSelectedRiderUid(branchFleet[0].uid);
-        }
+        console.error('[AssignRiderModal] Authoritative eligible riders fetch failed:', err);
+        setError(err.message || 'Unable to verify rider eligibility with store backend. Manual dispatch disabled.');
+        setEligibleRiders([]);
+        setSelectedRiderUid('');
       })
       .finally(() => {
         if (isMounted) setLoading(false);
