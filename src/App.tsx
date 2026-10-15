@@ -19,6 +19,7 @@ const EmailPage = lazy(() => import('./pages/EmailPage').then(m => ({ default: m
 const DeliveryManagementPage = lazy(() => import('./pages/DeliveryManagementPage').then(m => ({ default: m.DeliveryManagementPage })));
 const InventoryManager = lazy(() => import('./pages/InventoryManager').then(m => ({ default: m.InventoryManager })));
 const MenuManagementPage = lazy(() => import('./pages/MenuManagementPage').then(m => ({ default: m.MenuManagementPage })));
+const ReportsPage = lazy(() => import('./pages/ReportsPage').then(m => ({ default: m.ReportsPage })));
 
 const PageLoader = () => (
   <div className="flex h-64 w-full items-center justify-center">
@@ -89,6 +90,7 @@ export function App() {
           <Route path="/delivery" element={<Suspense fallback={<PageLoader />}><DeliveryManagementPage /></Suspense>} />
           <Route path="/inventory" element={<Suspense fallback={<PageLoader />}><InventoryManager /></Suspense>} />
           <Route path="/menu" element={<Suspense fallback={<PageLoader />}><MenuManagementPage /></Suspense>} />
+          <Route path="/reports" element={<Suspense fallback={<PageLoader />}><ReportsPage /></Suspense>} />
 
           {/* Clean legacy fallback redirects */}
           <Route path="/overview" element={<Navigate to="/dashboard" replace />} />

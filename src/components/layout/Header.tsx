@@ -10,8 +10,10 @@ import {
   ShieldCheck,
   Bell,
   BellOff,
-  Volume2
+  Volume2,
+  FileSpreadsheet
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useManagerStore } from '../../store/managerStore';
 import { deviceAlarmService } from '../../services/DeviceAlarmService';
 import { SoundSettingsModal } from '../ui/SoundSettingsModal';
@@ -126,6 +128,16 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         >
           <Volume2 className="w-4 h-4 text-[#c6a052]" />
         </button>
+
+        {/* Financial Reports Quick Link */}
+        <Link
+          to="/reports"
+          className="p-2 rounded-xl bg-[#141b16] border border-[#26332a] text-[#a4c29c] hover:text-white hover:bg-[#1a231d] transition-colors cursor-pointer hidden sm:flex items-center"
+          title="Financial & Sales Reports"
+          aria-label="Financial Reports"
+        >
+          <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+        </Link>
 
         {/* Real-time sync badge */}
         <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#10b981]/10 border border-[#10b981]/20 text-[11px] text-[#10b981] font-semibold">

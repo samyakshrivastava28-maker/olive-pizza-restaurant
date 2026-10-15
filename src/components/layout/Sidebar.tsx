@@ -11,7 +11,8 @@ import {
   Pizza, 
   LogOut,
   X,
-  ShieldCheck
+  ShieldCheck,
+  FileSpreadsheet
 } from 'lucide-react';
 import { AppLogo } from '../common/AppLogo';
 import { useManagerStore } from '../../store/managerStore';
@@ -41,6 +42,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       label: 'Order History', 
       path: '/order-history', 
       icon: History 
+    },
+    { 
+      label: 'Financial Reports', 
+      path: '/reports', 
+      icon: FileSpreadsheet 
     },
     { 
       label: 'Menu & Customizations', 
