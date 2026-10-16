@@ -183,7 +183,7 @@ public class UrgentOrderAlertActivity extends AppCompatActivity {
             mediaPlayer.setAudioAttributes(
                 new AudioAttributes.Builder()
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
                     .build()
             );
             mediaPlayer.setLooping(true);
