@@ -260,7 +260,7 @@ public class RestaurantMessagingService extends MessagingService {
         Uri soundUri = resolveSoundUri(soundName, isAlarm);
         AudioAttributes audioAttributes = new AudioAttributes.Builder()
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .setUsage(isAlarm ? AudioAttributes.USAGE_ALARM : AudioAttributes.USAGE_NOTIFICATION)
+            .setUsage(isAlarm ? AudioAttributes.USAGE_NOTIFICATION_RINGTONE : AudioAttributes.USAGE_NOTIFICATION)
             .build();
         channel.setSound(soundUri, audioAttributes);
 
@@ -276,7 +276,7 @@ public class RestaurantMessagingService extends MessagingService {
             }
         }
         return android.media.RingtoneManager.getDefaultUri(
-            isAlarm ? android.media.RingtoneManager.TYPE_ALARM : android.media.RingtoneManager.TYPE_NOTIFICATION
+            isAlarm ? android.media.RingtoneManager.TYPE_RINGTONE : android.media.RingtoneManager.TYPE_NOTIFICATION
         );
     }
 
