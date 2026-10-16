@@ -126,10 +126,10 @@ public class RestaurantMessagingService extends MessagingService {
         if (body == null) body = "₹" + (totalAmount != null ? totalAmount : "0") + " • " + (paymentMethod != null ? paymentMethod : "COD");
 
         int notifId = orderId != null ? orderId.hashCode() : (int) (System.currentTimeMillis() & 0x7fffffff);
-        String channelId = "olive_order_alarm_v3";
+        String channelId = "olive_order_alarm_v4";
 
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        ensureChannelExists(nm, channelId, "Olive Order Urgent Alarm (v3)", true, "new_order");
+        ensureChannelExists(nm, channelId, "Olive Order Urgent Alarm (v4)", true, "new_order");
 
         // Intent for UrgentOrderAlertActivity (full-screen intent)
         Intent fullScreenIntent = new Intent(this, UrgentOrderAlertActivity.class);
@@ -261,12 +261,6 @@ public class RestaurantMessagingService extends MessagingService {
             .setUsage(isAlarm ? AudioAttributes.USAGE_ALARM : AudioAttributes.USAGE_NOTIFICATION)
             .build();
         channel.setSound(soundUri, audioAttributes);
-
-        if (isAlarm && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            try {
-                channel.setBypassDnd(true);
-            } catch (Exception ignored) {}
-        }
 
         nm.createNotificationChannel(channel);
     }
