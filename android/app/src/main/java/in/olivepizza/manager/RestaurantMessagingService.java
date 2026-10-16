@@ -60,13 +60,15 @@ public class RestaurantMessagingService extends MessagingService {
                                  "new_order".equalsIgnoreCase(stage) ||
                                  "alarm_actionable".equalsIgnoreCase(data.get("category"));
 
-            if (isNewOrder) {
-                FirebaseUser signedInManager = FirebaseAuth.getInstance().getCurrentUser();
-                String recipientUid = data.get("recipientUid");
-                if (signedInManager == null || recipientUid == null || !signedInManager.getUid().equals(recipientUid)) {
-                    Log.w(TAG, "Ignoring operational order alert because the current authenticated manager does not match the recipient UID.");
-                    return;
-                }
+            FirebaseUser signedInManager = FirebaseAuth.getInstance().getCurrentUser();
+            String recipientUid = data.get("recipientUid");
+            if (recipientUid != null && (signedInManager == null || !signedInManager.getUid().equals(recipientUid))) {
+                Log.w(TAG, "Ignoring operational push because the current authenticated manager does not match the recipient UID.");
+                return;
+            }
+            if (isNewOrder && (signedInManager == null || recipientUid == null || !signedInManager.getUid().equals(recipientUid))) {
+                Log.w(TAG, "Ignoring new-order alert without the matching authenticated recipient UID.");
+                return;
             }
 
             if ("stop_alert".equalsIgnoreCase(action)) {
