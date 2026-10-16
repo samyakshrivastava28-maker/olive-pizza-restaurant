@@ -135,6 +135,7 @@ public class RestaurantMessagingService extends MessagingService {
         Intent fullScreenIntent = new Intent(this, UrgentOrderAlertActivity.class);
         fullScreenIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         fullScreenIntent.putExtra("orderId", orderId);
+        fullScreenIntent.putExtra("recipientUid", data.get("recipientUid"));
         fullScreenIntent.putExtra("orderNumber", orderNumber);
         fullScreenIntent.putExtra("totalAmount", totalAmount);
         fullScreenIntent.putExtra("itemsSummary", itemsSummary);
@@ -153,6 +154,7 @@ public class RestaurantMessagingService extends MessagingService {
         contentIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         if (orderId != null) {
             contentIntent.putExtra("orderId", orderId);
+            contentIntent.putExtra("recipientUid", data.get("recipientUid"));
             contentIntent.putExtra("url", "/live-orders?orderId=" + orderId);
         }
         PendingIntent contentPendingIntent = PendingIntent.getActivity(
@@ -165,6 +167,7 @@ public class RestaurantMessagingService extends MessagingService {
         // Accept Action Intent
         Intent acceptIntent = new Intent(this, UrgentOrderAlertActivity.class);
         acceptIntent.putExtra("orderId", orderId);
+        acceptIntent.putExtra("recipientUid", data.get("recipientUid"));
         acceptIntent.putExtra("orderNumber", orderNumber);
         acceptIntent.putExtra("notificationId", notifId);
         acceptIntent.putExtra("autoAccept", true);
