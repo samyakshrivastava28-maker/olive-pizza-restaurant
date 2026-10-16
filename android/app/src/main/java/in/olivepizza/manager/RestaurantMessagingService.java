@@ -17,6 +17,8 @@ import androidx.core.app.NotificationCompat;
 
 import com.capacitorjs.plugins.pushnotifications.MessagingService;
 import com.google.firebase.messaging.RemoteMessage;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -56,6 +58,15 @@ public class RestaurantMessagingService extends MessagingService {
                                  "NEW_ORDER".equalsIgnoreCase(type) ||
                                  "new_order".equalsIgnoreCase(stage) ||
                                  "alarm_actionable".equalsIgnoreCase(data.get("category"));
+
+            if (isNewOrder) {
+                FirebaseUser signedInManager = FirebaseAuth.getInstance().getCurrentUser();
+                String recipientUid = data.get("recipientUid");
+                if (signedInManager == null || recipientUid == null || !signedInManager.getUid().equals(recipientUid)) {
+                    Log.w(TAG, "Ignoring operational order alert because the current authenticated manager does not match the recipient UID.");
+                    return;
+                }
+            }
 
             if ("stop_alert".equalsIgnoreCase(action)) {
                 String orderId = data.get("orderId");
