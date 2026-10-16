@@ -29,6 +29,7 @@ import java.util.Map;
  */
 public class RestaurantMessagingService extends MessagingService {
     private static final String TAG = "RestaurantMessaging";
+    private static final String STOP_ALERT_ACTION = "in.olivepizza.manager.STOP_URGENT_ORDER_ALERT";
 
     @Override
     public void onMessageReceived(@NonNull RemoteMessage remoteMessage) {
@@ -71,6 +72,11 @@ public class RestaurantMessagingService extends MessagingService {
             if ("stop_alert".equalsIgnoreCase(action)) {
                 String orderId = data.get("orderId");
                 if (orderId != null) {
+                    // Stop the alert both in the system tray and inside a currently open full-screen order screen.
+                    Intent stopActivityAlert = new Intent(STOP_ALERT_ACTION);
+                    stopActivityAlert.setPackage(getPackageName());
+                    stopActivityAlert.putExtra("orderId", orderId);
+                    sendBroadcast(stopActivityAlert);
                     NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
                     if (nm != null) nm.cancel(orderId.hashCode());
                 }
