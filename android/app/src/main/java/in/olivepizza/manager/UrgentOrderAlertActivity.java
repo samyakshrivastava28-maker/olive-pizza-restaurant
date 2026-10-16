@@ -172,7 +172,7 @@ public class UrgentOrderAlertActivity extends AppCompatActivity {
                 alarmUri = Uri.parse("android.resource://" + getPackageName() + "/" + resId);
             }
             if (alarmUri == null) {
-                alarmUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM);
+                alarmUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE);
             }
             if (alarmUri == null) {
                 alarmUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION);
