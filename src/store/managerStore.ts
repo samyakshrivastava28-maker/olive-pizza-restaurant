@@ -76,6 +76,7 @@ interface ManagerState {
   toggleRestaurantStatus: (isOpen: boolean, reason?: string) => Promise<boolean>;
   fetchHistoricalOrders: (params?: { search?: string; status?: string; fulfillment?: string; dateRange?: string }) => Promise<void>;
   updateOrderStatus: (orderId: string, nextStatus: OrderStatus, reason?: string, estimatedPreparationMinutes?: number) => Promise<{ success: boolean; error?: string; status?: OrderStatus }>;
+  confirmPrepTime: (orderId: string, prepMinutes: number) => Promise<{ success: boolean; error?: string; expectedReadyAt?: string; deliveryEta?: string }>;
   subscribeToRiders: (branchId: string) => () => void;
   sendNotification: (payload: { title: string; message: string; targetAudience: 'customers' | 'staff' | 'delivery' | 'all'; imageUrl?: string; deepLink?: string }) => Promise<boolean>;
   fetchNotificationHistory: () => Promise<void>;
@@ -711,6 +712,34 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       console.error('[ManagerStore] Error updating order status:', err);
       set({ isActionLoading: false });
       return { success: false, error: err?.message || 'Failed to update order status' };
+    }
+  },
+
+  confirmPrepTime: async (orderId: string, prepMinutes: number) => {
+    try {
+      const res = await fetchApi(`/api/orders/${orderId}/confirm-prep-time`, {
+        method: 'POST',
+        body: JSON.stringify({ prepMinutes })
+      });
+      if (res && res.success) {
+        set((state) => ({
+          liveOrders: state.liveOrders.map((o) =>
+            o.id === orderId
+              ? {
+                  ...o,
+                  estimatedPreparationMinutes: prepMinutes,
+                  expectedReadyAt: res.expectedReadyAt,
+                  estimatedReadyAt: res.expectedReadyAt,
+                  deliveryEta: res.deliveryEta || (o as any).deliveryEta,
+                }
+              : o
+          )
+        }));
+        return { success: true, expectedReadyAt: res.expectedReadyAt, deliveryEta: res.deliveryEta };
+      }
+      return { success: false, error: res?.error || 'Failed to update prep duration' };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Network error updating prep duration' };
     }
   },
 

@@ -17,6 +17,8 @@ import androidx.core.app.NotificationCompat;
 
 import com.capacitorjs.plugins.pushnotifications.MessagingService;
 import com.google.firebase.messaging.RemoteMessage;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -27,6 +29,7 @@ import java.util.Map;
  */
 public class RestaurantMessagingService extends MessagingService {
     private static final String TAG = "RestaurantMessaging";
+    private static final String STOP_ALERT_ACTION = "in.olivepizza.manager.STOP_URGENT_ORDER_ALERT";
 
     @Override
     public void onMessageReceived(@NonNull RemoteMessage remoteMessage) {
@@ -57,9 +60,25 @@ public class RestaurantMessagingService extends MessagingService {
                                  "new_order".equalsIgnoreCase(stage) ||
                                  "alarm_actionable".equalsIgnoreCase(data.get("category"));
 
+            FirebaseUser signedInManager = FirebaseAuth.getInstance().getCurrentUser();
+            String recipientUid = data.get("recipientUid");
+            if (recipientUid != null && (signedInManager == null || !signedInManager.getUid().equals(recipientUid))) {
+                Log.w(TAG, "Ignoring operational push because the current authenticated manager does not match the recipient UID.");
+                return;
+            }
+            if (isNewOrder && (signedInManager == null || recipientUid == null || !signedInManager.getUid().equals(recipientUid))) {
+                Log.w(TAG, "Ignoring new-order alert without the matching authenticated recipient UID.");
+                return;
+            }
+
             if ("stop_alert".equalsIgnoreCase(action)) {
                 String orderId = data.get("orderId");
                 if (orderId != null) {
+                    // Stop the alert both in the system tray and inside a currently open full-screen order screen.
+                    Intent stopActivityAlert = new Intent(STOP_ALERT_ACTION);
+                    stopActivityAlert.setPackage(getPackageName());
+                    stopActivityAlert.putExtra("orderId", orderId);
+                    sendBroadcast(stopActivityAlert);
                     NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
                     if (nm != null) nm.cancel(orderId.hashCode());
                 }
@@ -109,15 +128,16 @@ public class RestaurantMessagingService extends MessagingService {
         if (body == null) body = "₹" + (totalAmount != null ? totalAmount : "0") + " • " + (paymentMethod != null ? paymentMethod : "COD");
 
         int notifId = orderId != null ? orderId.hashCode() : (int) (System.currentTimeMillis() & 0x7fffffff);
-        String channelId = "olive_order_alarm_v3";
+        String channelId = "olive_order_alarm_v4";
 
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        ensureChannelExists(nm, channelId, "Olive Order Urgent Alarm (v3)", true, "new_order");
+        ensureChannelExists(nm, channelId, "Olive Order Urgent Alarm (v4)", true, "new_order");
 
         // Intent for UrgentOrderAlertActivity (full-screen intent)
         Intent fullScreenIntent = new Intent(this, UrgentOrderAlertActivity.class);
         fullScreenIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         fullScreenIntent.putExtra("orderId", orderId);
+        fullScreenIntent.putExtra("recipientUid", data.get("recipientUid"));
         fullScreenIntent.putExtra("orderNumber", orderNumber);
         fullScreenIntent.putExtra("totalAmount", totalAmount);
         fullScreenIntent.putExtra("itemsSummary", itemsSummary);
@@ -136,6 +156,7 @@ public class RestaurantMessagingService extends MessagingService {
         contentIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         if (orderId != null) {
             contentIntent.putExtra("orderId", orderId);
+            contentIntent.putExtra("recipientUid", data.get("recipientUid"));
             contentIntent.putExtra("url", "/live-orders?orderId=" + orderId);
         }
         PendingIntent contentPendingIntent = PendingIntent.getActivity(
@@ -148,6 +169,7 @@ public class RestaurantMessagingService extends MessagingService {
         // Accept Action Intent
         Intent acceptIntent = new Intent(this, UrgentOrderAlertActivity.class);
         acceptIntent.putExtra("orderId", orderId);
+        acceptIntent.putExtra("recipientUid", data.get("recipientUid"));
         acceptIntent.putExtra("orderNumber", orderNumber);
         acceptIntent.putExtra("notificationId", notifId);
         acceptIntent.putExtra("autoAccept", true);
@@ -238,15 +260,9 @@ public class RestaurantMessagingService extends MessagingService {
         Uri soundUri = resolveSoundUri(soundName, isAlarm);
         AudioAttributes audioAttributes = new AudioAttributes.Builder()
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .setUsage(isAlarm ? AudioAttributes.USAGE_ALARM : AudioAttributes.USAGE_NOTIFICATION)
+            .setUsage(isAlarm ? AudioAttributes.USAGE_NOTIFICATION_RINGTONE : AudioAttributes.USAGE_NOTIFICATION)
             .build();
         channel.setSound(soundUri, audioAttributes);
-
-        if (isAlarm && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            try {
-                channel.setBypassDnd(true);
-            } catch (Exception ignored) {}
-        }
 
         nm.createNotificationChannel(channel);
     }
@@ -260,7 +276,7 @@ public class RestaurantMessagingService extends MessagingService {
             }
         }
         return android.media.RingtoneManager.getDefaultUri(
-            isAlarm ? android.media.RingtoneManager.TYPE_ALARM : android.media.RingtoneManager.TYPE_NOTIFICATION
+            isAlarm ? android.media.RingtoneManager.TYPE_RINGTONE : android.media.RingtoneManager.TYPE_NOTIFICATION
         );
     }
 

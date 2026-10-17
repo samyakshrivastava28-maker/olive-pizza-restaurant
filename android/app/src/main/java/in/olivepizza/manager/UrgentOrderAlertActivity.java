@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.app.KeyguardManager;
 import android.app.NotificationManager;
 import android.content.Context;
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
 import android.content.Intent;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
@@ -43,12 +45,27 @@ public class UrgentOrderAlertActivity extends AppCompatActivity {
     private static final String BACKEND_URL = "https://olivepizza-owner.onrender.com/api/notifications/action";
 
     private String orderId;
+    private String recipientUid;
+    private boolean stopReceiverRegistered = false;
     private String orderNumber;
     private String totalAmount;
     private String itemsSummary;
     private String paymentMethod;
     private int notificationId;
     private MediaPlayer mediaPlayer;
+
+    private final BroadcastReceiver orderAlertStopReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (!"in.olivepizza.manager.STOP_URGENT_ORDER_ALERT".equals(intent.getAction())) return;
+            String stoppedOrderId = intent.getStringExtra("orderId");
+            if (orderId == null || !orderId.equals(stoppedOrderId)) return;
+            stopChime();
+            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (manager != null) manager.cancel(orderId.hashCode());
+            finish();
+        }
+    };
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -62,11 +79,23 @@ public class UrgentOrderAlertActivity extends AppCompatActivity {
         // Parse intent extras
         Intent intent = getIntent();
         orderId = intent.getStringExtra("orderId");
+        recipientUid = intent.getStringExtra("recipientUid");
         orderNumber = intent.getStringExtra("orderNumber");
         totalAmount = intent.getStringExtra("totalAmount");
         itemsSummary = intent.getStringExtra("itemsSummary");
         paymentMethod = intent.getStringExtra("paymentMethod");
         notificationId = intent.getIntExtra("notificationId", -1);
+
+        FirebaseUser signedInManager = FirebaseAuth.getInstance().getCurrentUser();
+        if (signedInManager == null || recipientUid == null || !signedInManager.getUid().equals(recipientUid)) {
+            Log.w(TAG, "Refusing to display/act on an order alert for a different or unauthenticated account.");
+            if (orderId != null) {
+                NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                if (manager != null) manager.cancel(orderId.hashCode());
+            }
+            finish();
+            return;
+        }
 
         if (orderNumber == null || orderNumber.isEmpty()) {
             orderNumber = orderId != null ? "#" + orderId.substring(Math.max(0, orderId.length() - 6)).toUpperCase() : "#NEW";
@@ -96,6 +125,27 @@ public class UrgentOrderAlertActivity extends AppCompatActivity {
         btnView.setOnClickListener(v -> handleViewOrder());
     }
 
+    @Override
+    protected void onStart() {
+        super.onStart();
+        IntentFilter filter = new IntentFilter("in.olivepizza.manager.STOP_URGENT_ORDER_ALERT");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(orderAlertStopReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(orderAlertStopReceiver, filter);
+        }
+        stopReceiverRegistered = true;
+    }
+
+    @Override
+    protected void onStop() {
+        if (stopReceiverRegistered) {
+            try { unregisterReceiver(orderAlertStopReceiver); } catch (Exception ignored) {}
+            stopReceiverRegistered = false;
+        }
+        super.onStop();
+    }
+
     private void setupWindowFlags() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true);
@@ -122,7 +172,7 @@ public class UrgentOrderAlertActivity extends AppCompatActivity {
                 alarmUri = Uri.parse("android.resource://" + getPackageName() + "/" + resId);
             }
             if (alarmUri == null) {
-                alarmUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM);
+                alarmUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE);
             }
             if (alarmUri == null) {
                 alarmUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION);
@@ -133,7 +183,7 @@ public class UrgentOrderAlertActivity extends AppCompatActivity {
             mediaPlayer.setAudioAttributes(
                 new AudioAttributes.Builder()
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
                     .build()
             );
             mediaPlayer.setLooping(true);

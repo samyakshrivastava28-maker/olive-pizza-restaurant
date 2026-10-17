@@ -189,12 +189,14 @@ export const PersistentActiveOrderSheet: React.FC = () => {
   const { 
     liveOrders, 
     updateOrderStatus, 
+    confirmPrepTime,
     isActionLoading, 
     activeBranchName 
   } = useManagerStore();
 
   const [sheetMode, setSheetMode] = useState<SheetMode>('minimized');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [prepAdjustment, setPrepAdjustment] = useState<number>(15);
 
   // Reject / Cancel modal state
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
@@ -276,16 +278,37 @@ export const PersistentActiveOrderSheet: React.FC = () => {
     ? formatDistanceToNow(new Date(currentOrder.createdAt), { addSuffix: true }) 
     : 'Just now';
 
+  // Keep prep duration aligned with current order
+  useEffect(() => {
+    if (currentOrder?.estimatedPreparationMinutes) {
+      setPrepAdjustment(currentOrder.estimatedPreparationMinutes);
+    }
+  }, [currentOrder?.id, currentOrder?.estimatedPreparationMinutes]);
+
+  const handleUpdatePrepTime = async (newMinutes: number) => {
+    if (!currentOrder) return;
+    const bounded = Math.min(90, Math.max(5, Math.round(newMinutes)));
+    setPrepAdjustment(bounded);
+    if (!isPending) {
+      const res = await confirmPrepTime(currentOrder.id, bounded);
+      if (res.success) {
+        toast.success(`Prep duration updated to ${bounded}m`);
+      } else {
+        toast.error(res.error || 'Failed to update prep duration');
+      }
+    }
+  };
+
   // Primary action button dispatcher
   const handlePrimaryAction = async () => {
     if (!currentOrder || isDeliveryInTransit) return;
 
     if (isPending) {
       SoundAlertEngine.stopAlarm();
-      const res = await updateOrderStatus(currentOrder.id, 'accepted');
+      const res = await updateOrderStatus(currentOrder.id, 'accepted', undefined, prepAdjustment);
       if (res && res.success) {
         SoundAlertEngine.playSound('order_accepted');
-        toast.success(`Order #${currentOrder.dailyOrderNumber || currentOrder.id.slice(-6).toUpperCase()} Accepted!`);
+        toast.success(`Order #${currentOrder.dailyOrderNumber || currentOrder.id.slice(-6).toUpperCase()} Accepted (${prepAdjustment}m prep)!`);
       } else {
         toast.error(res?.error || 'Failed to accept order');
       }
@@ -972,11 +995,45 @@ export const PersistentActiveOrderSheet: React.FC = () => {
                   )}
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
-                  {/* Primary Transition Action */}
-                  <button
-                    onClick={handlePrimaryAction}
-                    disabled={isActionLoading}
+                <div className="space-y-2">
+                  {(isPending || isAccepted || isPreparing) && (
+                    <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-amber-400" />
+                        <span className="font-bold text-slate-300 text-[11px]">Prep Time:</span>
+                        <div className="flex items-center gap-1">
+                          {[10, 15, 20, 30, 45].map((mins) => (
+                            <button
+                              key={mins}
+                              type="button"
+                              onClick={() => handleUpdatePrepTime(mins)}
+                              className={`px-2 py-0.5 rounded-lg text-[11px] font-bold transition ${
+                                prepAdjustment === mins
+                                  ? 'bg-amber-500 text-slate-950 shadow-sm'
+                                  : 'bg-slate-800 text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              {mins}m
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      {currentOrder.expectedReadyAt && (
+                        <div className="text-[11px] font-medium text-emerald-400 flex items-center gap-1">
+                          <span>Ready ~</span>
+                          <span className="font-bold">
+                            {new Date(currentOrder.expectedReadyAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    {/* Primary Transition Action */}
+                    <button
+                      onClick={handlePrimaryAction}
+                      disabled={isActionLoading}
                     className={`flex-1 py-3 px-4 rounded-2xl font-black text-sm tracking-wide transition shadow-lg flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50 ${
                       isPending
                         ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
@@ -1025,7 +1082,8 @@ export const PersistentActiveOrderSheet: React.FC = () => {
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-              )}
+              </div>
+            )}
 
               {/* View mode toggle prompt */}
               <div className="flex justify-between items-center text-[11px] text-[#7ba372] pt-1">
