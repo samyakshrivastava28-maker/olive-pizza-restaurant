@@ -263,6 +263,13 @@ export const PersistentActiveOrderSheet: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
+  // Keep prep duration aligned with current order
+  useEffect(() => {
+    if (currentOrder?.estimatedPreparationMinutes) {
+      setPrepAdjustment(currentOrder.estimatedPreparationMinutes);
+    }
+  }, [currentOrder?.id, currentOrder?.estimatedPreparationMinutes]);
+
   if (activeOrders.length === 0 || !currentOrder) {
     return null;
   }
@@ -277,13 +284,6 @@ export const PersistentActiveOrderSheet: React.FC = () => {
   const timeElapsed = currentOrder.createdAt 
     ? formatDistanceToNow(new Date(currentOrder.createdAt), { addSuffix: true }) 
     : 'Just now';
-
-  // Keep prep duration aligned with current order
-  useEffect(() => {
-    if (currentOrder?.estimatedPreparationMinutes) {
-      setPrepAdjustment(currentOrder.estimatedPreparationMinutes);
-    }
-  }, [currentOrder?.id, currentOrder?.estimatedPreparationMinutes]);
 
   const handleUpdatePrepTime = async (newMinutes: number) => {
     if (!currentOrder) return;
