@@ -2,7 +2,7 @@ name: Build iOS — Restaurant
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'fix/**', 'feat/**']
     tags:
       - 'v*'
   pull_request:
