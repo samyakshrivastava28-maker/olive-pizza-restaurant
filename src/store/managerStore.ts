@@ -202,14 +202,19 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
 
           if (resp && resp.authorized) {
             const u = resp.user;
+            let resolvedBranchId = u.branchId || 'main_branch';
+            if (resolvedBranchId === 'fra_primary' || !resolvedBranchId) resolvedBranchId = 'main_branch';
+            let resolvedFranchiseId = u.franchiseId || 'fra_rajnandgaon';
+            if (resolvedFranchiseId === 'fra_primary' || !resolvedFranchiseId) resolvedFranchiseId = 'fra_rajnandgaon';
+
             const profile: ManagerAccount = {
               uid: currentUser.uid,
               name: u.name || currentUser.displayName || emailLower.split('@')[0] || 'Restaurant Manager',
               email: currentUser.email || '',
               role: u.role as any,
-              branchId: u.branchId || '',
-              branchName: u.branchName || 'Assigned Branch',
-              franchiseId: u.franchiseId || '',
+              branchId: resolvedBranchId,
+              branchName: u.branchName || 'Olive Pizza — Rajnandgaon HQ',
+              franchiseId: resolvedFranchiseId,
               permissions: u.permissions || [],
               isActive: true
             };
