@@ -167,7 +167,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           COMMIT_NUM=$(git rev-list --count HEAD)
-          APK_NAME="olivepizza-restaurant-${COMMIT_NUM}.apk"
+          APK_NAME="olivepizza-restaurant-v2.0.1.apk"
           echo "Publishing single latest APK ${APK_NAME} to release tag 'latest'..."
 
           # Ensure 'latest' release exists or create it
@@ -185,6 +185,18 @@ jobs:
 
           # Upload strictly the single latest commit APK
           gh release upload latest "artifact/${APK_NAME}" --repo "${GITHUB_REPOSITORY}" --clobber
+
+          # Also upload olivepizza-restaurant-latest.apk alias for direct URL compatibility
+          cp -f "artifact/${APK_NAME}" "artifact/olivepizza-restaurant-latest.apk"
+          gh release upload latest "artifact/olivepizza-restaurant-latest.apk" --repo "${GITHUB_REPOSITORY}" --clobber
+
+          # If triggered by a release tag, also upload directly to that release
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+            gh release view "${TAG_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1 || \
+              gh release create "${TAG_NAME}" --repo "${GITHUB_REPOSITORY}" --title "Olive Pizza Restaurant Manager — Release ${TAG_NAME} (Official Release)" --notes "Official release ${TAG_NAME}."
+            gh release upload "${TAG_NAME}" "artifact/${APK_NAME}" --repo "${GITHUB_REPOSITORY}" --clobber
+          fi
 
       # 16. Build Summary
       - name: Build Summary
