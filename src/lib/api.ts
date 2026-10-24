@@ -55,13 +55,15 @@ export function getWebSocketUrl(): string {
 export const API_BASE_URL = getApiBaseUrl();
 
 export interface ApiResponse<T = any> {
+  isNetworkError?: boolean;
   success: boolean;
   data?: T;
   manager?: any;
   managers?: any[];
   notifications?: any[];
   logs?: any[];
-  status?: string;
+  status?: string | number;
+  httpStatus?: number;
   orderId?: string;
   message?: string;
   error?: string;
@@ -267,6 +269,7 @@ export async function fetchApi<T = any>(
         return {
           success: false,
           status: res.status,
+          httpStatus: res.status,
           code: json?.code,
           reason: json?.reason,
           error: json?.error || json?.message || json?.reason || (res.status === 403 ? 'Unauthorized: You do not have permission for this restaurant action.' : `Server returned error (${res.status})`),

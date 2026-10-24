@@ -237,11 +237,11 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
             get().subscribeToRiders(profile.branchId);
             get().fetchHistoricalOrders();
             return;
-          } else {
-            // Account not authorized for dashboard access
+          } else if (resp && (Number(resp.status) === 403 || resp.httpStatus === 403 || resp.code === 'ACCOUNT_REJECTED' || resp.code === 'ACCOUNT_DEACTIVATED' || resp.code === 'PENDING_OWNER_APPROVAL' || resp.code === 'NOT_REGISTERED' || resp.code === 'BRANCH_NOT_ASSIGNED')) {
+            // Explicit authorization denial from server
             const denialReason = resp?.reason || 'This account is not authorized to use this Olive Pizza application.';
             const code = resp?.code || 'UNAUTHORIZED';
-            console.warn('[ManagerStore] Access restricted for account:', emailLower, code, denialReason);
+            console.warn('[ManagerStore] Access restricted by server:', emailLower, code, denialReason);
 
             SoundAlertEngine.stopAlarm();
 
@@ -262,6 +262,21 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
               isAuthChecking: false,
               authStatus: isPending ? 'PENDING_OWNER_APPROVAL' : code === 'ACCOUNT_REJECTED' ? 'ACCOUNT_REJECTED' : code === 'ACCOUNT_DEACTIVATED' ? 'ACCOUNT_DEACTIVATED' : null,
               restrictedReason: denialReason,
+              restrictedEmail: emailLower
+            });
+          } else {
+            // Transient network error, timeout, or server 5xx cold start
+            // DO NOT signOut! Keep session and allow retry
+            console.warn('[ManagerStore] Transient connectivity or server error during auth check:', resp?.error);
+            SoundAlertEngine.stopAlarm();
+            set({
+              user: currentUser,
+              managerProfile: null,
+              userRole: null,
+              isAuthorized: false,
+              isAuthChecking: false,
+              authStatus: null,
+              restrictedReason: resp?.error || 'Unable to connect to authorization server. Please check your internet connection and retry.',
               restrictedEmail: emailLower
             });
           }
