@@ -1,4 +1,4 @@
-import { Capacitor } from '@capacitor/core';
+﻿import { Capacitor } from '@capacitor/core';
 import { getCurrentAuthToken } from './firebase';
 
 export const PRODUCTION_BACKEND_URL = "https://olivepizza-owner.onrender.com";
@@ -246,19 +246,31 @@ export async function fetchApi<T = any>(
         headers,
       };
 
-      let res = await fetch(primaryUrl, config);
+      let res: Response;
+      try {
+        res = await fetch(primaryUrl, config);
+      } catch (fetchErr: any) {
+        // Safe proxy fallback: Only on localhost when Vite proxy connection is refused
+        const isLocalDev = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+        if (isLocalDev && primaryUrl.startsWith('/')) {
+          const directUrl = DEV_BACKEND_URL + primaryUrl;
+          res = await fetch(directUrl, config);
+        } else {
+          throw fetchErr;
+        }
+      }
 
-      // If proxy failed on local dev, fallback directly to backend URL
-      if (!res.ok && primaryUrl.startsWith('/')) {
+      // If local dev Vite proxy returned a gateway error (502/504), retry direct backend
+      const isLocalHost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+      if (isLocalHost && (res.status === 502 || res.status === 504) && primaryUrl.startsWith('/')) {
         try {
-          const directUrl = `${DEV_BACKEND_URL}${primaryUrl}`;
+          const directUrl = DEV_BACKEND_URL + primaryUrl;
           const fallbackRes = await fetch(directUrl, config);
           if (fallbackRes.ok) {
             res = fallbackRes;
           }
         } catch {}
       }
-
       const json = await res.json().catch(() => null);
 
       if (res.status === 401) {

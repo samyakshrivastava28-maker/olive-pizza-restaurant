@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { 
   Menu, 
   MapPin, 
@@ -41,9 +41,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     { id: managerProfile.branchId, name: managerProfile.branchName || activeBranchName || 'Assigned Branch' },
   ] : (activeBranchId ? [{ id: activeBranchId, name: activeBranchName || 'Assigned Branch' }] : []);
 
-  const isGlobalOwner = userRole === 'owner' || 
-    managerProfile?.email === 'olivepizzarjn@gmail.com' || 
-    managerProfile?.email === 'webhub2811@gmail.com';
+  const isGlobalOwner = userRole === 'owner' || userRole === 'platform_owner';
 
   return (
     <header className="sticky top-0 z-30 bg-[#0d120f]/90 backdrop-blur-md border-b border-[#26332a] px-4 sm:px-6 py-3.5 flex items-center justify-between">
