@@ -11,7 +11,8 @@ import {
   Pizza, 
   LogOut,
   X,
-  ShieldCheck
+  ShieldCheck,
+  Database
 } from 'lucide-react';
 import { AppLogo } from '../common/AppLogo';
 import { useManagerStore } from '../../store/managerStore';
@@ -68,6 +69,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       icon: Bike,
       badge: (riders || []).filter(r => r?.isOnline).length > 0 ? `${(riders || []).filter(r => r?.isOnline).length} ON` : undefined,
       badgeColor: 'bg-[#10b981]/20 text-[#10b981]'
+    },
+    { 
+      label: 'Local Data & Backups', 
+      path: '/local-data', 
+      icon: Database 
     },
   ];
 

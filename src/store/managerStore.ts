@@ -17,6 +17,7 @@ import { fetchApi, invalidateStatusCache, invalidateRestaurantCache } from '../l
 import { SoundAlertEngine } from '../lib/SoundAlertEngine';
 import { NotificationDeduplicator } from '../lib/NotificationDeduplicator';
 import { deviceAlarmService } from '../services/DeviceAlarmService';
+import { RestaurantIndexedDbService, OfflineActionRecord } from '../services/RestaurantIndexedDbService';
 import type { 
   Order, 
   OrderStatus, 
@@ -46,6 +47,10 @@ interface ManagerState {
   historicalOrders: Order[];
   isOrdersLoading: boolean;
   isActionLoading: boolean;
+  pendingOfflineActionsCount: number;
+  lastSyncTimestamp: string | null;
+  syncOfflineActions: () => Promise<{ success: boolean; synced: number; failed: number }>;
+  restoreFromIndexedDbCache: () => Promise<void>;
 
   // Delivery riders
   riders: DeliveryPartner[];
@@ -135,6 +140,8 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   historicalOrders: [],
   isOrdersLoading: true,
   isActionLoading: false,
+  pendingOfflineActionsCount: 0,
+  lastSyncTimestamp: null,
 
   riders: [],
   isRidersLoading: true,
@@ -184,6 +191,24 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', handleResume);
     }
+
+    // Restore cached orders and sync state from IndexedDB instantly
+    get().restoreFromIndexedDbCache();
+
+    // Setup automatic synchronization when network reconnects
+    const handleOnline = () => {
+      console.log('[ManagerStore] Network online event detected -> triggering offline actions sync');
+      get().syncOfflineActions();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleOnline);
+    }
+    const syncInterval = setInterval(() => {
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        get().syncOfflineActions();
+      }
+    }, 30000);
 
     const unsubAuth = onAuthStateChanged(auth, async (currentUser) => {
       clearTimeout(safetyTimer);
@@ -320,6 +345,10 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
 
     return () => {
       clearTimeout(safetyTimer);
+      clearInterval(syncInterval);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', handleOnline);
+      }
       if (typeof document !== 'undefined') {
         document.removeEventListener('visibilitychange', handleResume);
       }
@@ -532,6 +561,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         // Safe in-memory chronological sort
         activeList.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
         set({ liveOrders: activeList, isOrdersLoading: false });
+          RestaurantIndexedDbService.cacheOrders(activeList).catch(() => {});
 
         // Sound alarm management: deduplicate by order ID and avoid continuously restarting sirens on every snapshot
         const now = Date.now();
@@ -666,6 +696,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       });
 
       set({ historicalOrders: pastList });
+      RestaurantIndexedDbService.cacheOrders(pastList).catch(() => {});
     } catch (err) {
       console.error('[ManagerStore] Error fetching historical orders:', err);
     }
@@ -674,6 +705,10 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   updateOrderStatus: async (orderId, nextStatus, reason, estimatedPreparationMinutes) => {
     set({ isActionLoading: true });
     try {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        throw new Error('NETWORK_OFFLINE: Device is currently offline');
+      }
+
       let endpoint = `/api/orders/${orderId}/status`;
       let body: any = { status: nextStatus };
 
@@ -729,13 +764,54 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         return { success: false, error: res?.error || 'Failed to update order status' };
       }
     } catch (err: any) {
-      console.error('[ManagerStore] Error updating order status:', err);
-      set({ isActionLoading: false });
-      return { success: false, error: err?.message || 'Failed to update order status' };
+      console.warn('[ManagerStore] Network request failed for updateOrderStatus, falling back to durable offline action queue:', err);
+      try {
+        const idempotencyKey = `off_act_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        const existingOrder = get().liveOrders.find((o) => o.id === orderId) || get().historicalOrders.find((o) => o.id === orderId);
+
+        const offlineRecord: OfflineActionRecord = {
+          idempotencyKey,
+          orderId,
+          nextStatus,
+          branchId: existingOrder?.branchId || get().activeBranchId || 'branch_rjn_01',
+          franchiseId: get().managerProfile?.franchiseId || 'all',
+          reason,
+          estimatedPreparationMinutes,
+          status: 'PENDING_SYNC',
+          createdAt: new Date().toISOString(),
+          retryCount: 0,
+          orderSummary: {
+            orderNumber: existingOrder?.orderNumber,
+            customerName: existingOrder?.customerName,
+            totalAmount: existingOrder?.totalAmount
+          }
+        };
+
+        await RestaurantIndexedDbService.enqueueOfflineAction(offlineRecord);
+
+        // Optimistic local state update
+        set((state) => {
+          const updatedLive = state.liveOrders.map((o) =>
+            o.id === orderId ? { ...o, status: nextStatus, cancellationReason: reason } : o
+          ).filter((o) => ACTIVE_ORDER_STATUSES.includes(nextStatus) || o.id !== orderId);
+
+          return {
+            liveOrders: updatedLive,
+            isActionLoading: false,
+            pendingOfflineActionsCount: state.pendingOfflineActionsCount + 1
+          };
+        });
+
+        return { success: true, status: nextStatus };
+      } catch (dbErr: any) {
+        console.error('[ManagerStore] Failed to commit to durable IndexedDB queue:', dbErr);
+        set({ isActionLoading: false });
+        return { success: false, error: 'Failed to update order status or save offline: ' + dbErr?.message };
+      }
     }
   },
 
-  confirmPrepTime: async (orderId: string, prepMinutes: number) => {
+    confirmPrepTime: async (orderId: string, prepMinutes: number) => {
     try {
       const res = await fetchApi(`/api/orders/${orderId}/confirm-prep-time`, {
         method: 'POST',
@@ -1113,6 +1189,90 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         });
       }
     } catch {}
+  },
+
+  restoreFromIndexedDbCache: async () => {
+    try {
+      const branchId = get().activeBranchId;
+      const cached = await RestaurantIndexedDbService.getCachedOrders(branchId);
+      if (cached && cached.length > 0 && get().liveOrders.length === 0) {
+        const active = cached.filter(o => ACTIVE_ORDER_STATUSES.includes((o.status || '').toLowerCase() as OrderStatus));
+        set({ liveOrders: active, isOrdersLoading: false });
+      }
+
+      const pending = await RestaurantIndexedDbService.getPendingActions();
+      const meta = await RestaurantIndexedDbService.getSyncMeta('last_sync_success');
+
+      set({
+        pendingOfflineActionsCount: pending.length,
+        lastSyncTimestamp: meta?.lastSyncAt || null
+      });
+    } catch (err) {
+      console.warn('[ManagerStore] Failed to restore from IndexedDB cache:', err);
+    }
+  },
+
+  syncOfflineActions: async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return { success: false, synced: 0, failed: 0 };
+    }
+
+    try {
+      const pending = await RestaurantIndexedDbService.getPendingActions();
+      if (!pending || pending.length === 0) {
+        set({ pendingOfflineActionsCount: 0 });
+        return { success: true, synced: 0, failed: 0 };
+      }
+
+      const res = await fetchApi<any>('/api/orders/sync-offline-actions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actions: pending })
+      });
+
+      if (res && res.success && Array.isArray(res.results)) {
+        let syncedCount = 0;
+        let failedCount = 0;
+
+        for (const item of res.results) {
+          const key = item.idempotencyKey || item.actionId;
+          if (!key) continue;
+          if (item.status === 'SYNCED' || item.status === 'ALREADY_SYNCED') {
+            await RestaurantIndexedDbService.markActionSynced(key, item.serverTimestamp);
+            syncedCount++;
+          } else if (item.status === 'REVIEW_REQUIRED') {
+            await RestaurantIndexedDbService.markActionFailed(key, item.error || 'Conflict detected', 'REVIEW_REQUIRED');
+            failedCount++;
+          } else {
+            await RestaurantIndexedDbService.markActionFailed(key, item.error || 'Server rejected transition', 'RETRY_REQUIRED');
+            failedCount++;
+          }
+        }
+
+        const remaining = await RestaurantIndexedDbService.getPendingActions();
+        const syncMeta = {
+          lastSyncAt: new Date().toISOString(),
+          syncedCount,
+          failedCount,
+          pendingCount: remaining.length
+        };
+        await RestaurantIndexedDbService.setSyncMeta('last_sync_success', syncMeta);
+
+        set({
+          pendingOfflineActionsCount: remaining.length,
+          lastSyncTimestamp: syncMeta.lastSyncAt
+        });
+
+        // Trigger fresh fetch
+        get().fetchHistoricalOrders();
+
+        return { success: true, synced: syncedCount, failed: failedCount };
+      }
+      return { success: false, synced: 0, failed: 0 };
+    } catch (err) {
+      console.warn('[ManagerStore] Background sync error:', err);
+      return { success: false, synced: 0, failed: 0 };
+    }
   },
 
   getDashboardStats: () => {

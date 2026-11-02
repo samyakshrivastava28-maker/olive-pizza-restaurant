@@ -1,31 +1,26 @@
-﻿import { Capacitor } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
 import { getCurrentAuthToken } from './firebase';
+import { resolveApiBaseUrl, PRODUCTION_BACKEND_URL, DEV_BACKEND_URL } from './routing';
 
-export const PRODUCTION_BACKEND_URL = "https://olivepizza-owner.onrender.com";
-export const DEV_BACKEND_URL = "http://localhost:5000";
+export { PRODUCTION_BACKEND_URL, DEV_BACKEND_URL };
 
 export function getApiBaseUrl(): string {
-  if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL.replace(/\/+$/, '');
-  }
-  if (import.meta.env.VITE_BACKEND_URL) {
-    return import.meta.env.VITE_BACKEND_URL.replace(/\/+$/, '');
-  }
-  if (
-    Capacitor.isNativePlatform() ||
+  const isLocalHost = typeof window !== 'undefined' && 
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+  const isNative = Capacitor.isNativePlatform() ||
     (typeof window !== 'undefined' && (
       window.location.protocol === 'file:' ||
       window.location.protocol === 'capacitor:' ||
       window.location.protocol === 'ionic:' ||
       navigator.userAgent.includes('Electron')
-    ))
-  ) {
-    return PRODUCTION_BACKEND_URL;
-  }
-  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-    return DEV_BACKEND_URL;
-  }
-  return PRODUCTION_BACKEND_URL;
+    ));
+
+  return resolveApiBaseUrl({
+    env: (import.meta as any).env,
+    isLocalHost,
+    isNative
+  });
 }
 
 export function getApiUrl(endpoint: string = ''): string {
@@ -250,10 +245,10 @@ export async function fetchApi<T = any>(
       try {
         res = await fetch(primaryUrl, config);
       } catch (fetchErr: any) {
-        // Safe proxy fallback: Only on localhost when Vite proxy connection is refused
+        // Safe direct fallback: On localhost when fetch failed or connection refused
         const isLocalDev = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-        if (isLocalDev && primaryUrl.startsWith('/')) {
-          const directUrl = DEV_BACKEND_URL + primaryUrl;
+        if (isLocalDev && !primaryUrl.startsWith(DEV_BACKEND_URL)) {
+          const directUrl = DEV_BACKEND_URL + (endpoint.startsWith('/') ? endpoint : `/${endpoint}`);
           res = await fetch(directUrl, config);
         } else {
           throw fetchErr;
