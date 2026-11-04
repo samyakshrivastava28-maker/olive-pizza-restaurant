@@ -169,7 +169,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           COMMIT_NUM=$(git rev-list --count HEAD)
-          APK_NAME="olivepizza-restaurant-v2.0.1.apk"
+          APK_NAME="olivepizza-restaurant-${COMMIT_NUM}.apk"
           echo "Publishing single latest APK ${APK_NAME} to release tag 'latest'..."
 
           # Ensure 'latest' release exists or create it
