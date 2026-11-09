@@ -34,6 +34,8 @@ interface ManagerState {
   userRole: string | null;
   isAuthChecking: boolean;
   isAuthorized: boolean;
+  isDatabaseUnavailable: boolean;
+  setDatabaseUnavailable: (val: boolean) => void;
   authStatus?: 'APPROVED' | 'PENDING_OWNER_APPROVAL' | 'ACCOUNT_REJECTED' | 'ACCOUNT_DEACTIVATED' | null;
   restrictedReason: string | null;
   restrictedEmail: string | null;
@@ -121,6 +123,8 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   userRole: null,
   isAuthChecking: true,
   isAuthorized: false,
+  isDatabaseUnavailable: false,
+  setDatabaseUnavailable: (val: boolean) => set({ isDatabaseUnavailable: val }),
   authStatus: null,
   restrictedReason: null,
   restrictedEmail: null,
@@ -171,6 +175,11 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
             requestedBranchId: branchId
           })
         }).then(resp => {
+          if (resp && (Number(resp.status) === 503 || resp.httpStatus === 503 || resp.code === 'DATABASE_UNAVAILABLE')) {
+            console.warn('[ManagerStore] Database 503 on resume. Retaining session.');
+            set({ isDatabaseUnavailable: true });
+            return;
+          }
           if (resp && !resp.authorized) {
             console.warn('[ManagerStore] Account revoked on app resume:', resp.reason);
             signOut(auth).catch(() => {});
@@ -181,11 +190,17 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
               managerProfile: null,
               userRole: null,
               isAuthorized: false,
+              isDatabaseUnavailable: false,
               restrictedReason: resp.reason || 'This account or franchise has been deactivated by the store owner.',
               restrictedEmail: auth.currentUser?.email || null
             });
+          } else if (resp && resp.authorized) {
+            set({ isDatabaseUnavailable: false });
           }
-        }).catch(err => console.warn('[ManagerStore] Resume auth check error:', err));
+        }).catch(err => {
+          console.warn('[ManagerStore] Resume auth check error:', err);
+          set({ isDatabaseUnavailable: true });
+        });
       }
     };
     if (typeof document !== 'undefined') {
@@ -225,12 +240,64 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
             })
           });
 
+          // 1. Authoritative Database Outage (HTTP 503)
+          if (resp && (Number(resp.status) === 503 || resp.httpStatus === 503 || resp.code === 'DATABASE_UNAVAILABLE')) {
+            console.warn('[ManagerStore] Database temporarily unavailable (503). Retaining Firebase session.');
+            SoundAlertEngine.stopAlarm();
+            set({
+              user: currentUser,
+              managerProfile: null,
+              userRole: null,
+              isAuthorized: false,
+              isAuthChecking: false,
+              isDatabaseUnavailable: true,
+              restrictedReason: null,
+              restrictedEmail: null
+            });
+            return;
+          }
+
+          // 2. Authorized Handshake
           if (resp && resp.authorized) {
             const u = resp.user;
-            let resolvedBranchId = u.branchId || 'main_branch';
-            if (resolvedBranchId === 'fra_primary' || !resolvedBranchId) resolvedBranchId = 'main_branch';
-            let resolvedFranchiseId = u.franchiseId || 'fra_rajnandgaon';
-            if (resolvedFranchiseId === 'fra_primary' || !resolvedFranchiseId) resolvedFranchiseId = 'fra_rajnandgaon';
+            const allowedApps: string[] = resp.allowedApps || u?.allowedApps || [];
+            if (!allowedApps.includes('RESTAURANT_MANAGER')) {
+              console.warn('[ManagerStore] Account missing RESTAURANT_MANAGER grant in allowedApps');
+              await signOut(auth).catch(() => {});
+              localStorage.removeItem('restaurant_manager_profile');
+              sessionStorage.clear();
+              set({
+                user: null,
+                managerProfile: null,
+                userRole: null,
+                isAuthorized: false,
+                isAuthChecking: false,
+                isDatabaseUnavailable: false,
+                restrictedReason: 'Access denied: Your account lacks the RESTAURANT_MANAGER application grant.',
+                restrictedEmail: emailLower
+              });
+              return;
+            }
+
+            const resolvedBranchId = u?.branchId;
+            const resolvedFranchiseId = u?.franchiseId;
+            if (!resolvedBranchId || !resolvedFranchiseId) {
+              console.warn('[ManagerStore] Account missing authoritative branch or franchise assignment');
+              await signOut(auth).catch(() => {});
+              localStorage.removeItem('restaurant_manager_profile');
+              sessionStorage.clear();
+              set({
+                user: null,
+                managerProfile: null,
+                userRole: null,
+                isAuthorized: false,
+                isAuthChecking: false,
+                isDatabaseUnavailable: false,
+                restrictedReason: 'Access denied: No authoritative branch or franchise scope assigned to your account.',
+                restrictedEmail: emailLower
+              });
+              return;
+            }
 
             const profile: ManagerAccount = {
               uid: currentUser.uid,
@@ -251,6 +318,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
               isAuthorized: true,
               authStatus: 'APPROVED',
               isAuthChecking: false,
+              isDatabaseUnavailable: false,
               restrictedReason: null,
               restrictedEmail: null,
               activeBranchId: profile.branchId,
@@ -262,7 +330,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
             get().subscribeToRiders(profile.branchId);
             get().fetchHistoricalOrders();
             return;
-          } else if (resp && (Number(resp.status) === 403 || resp.httpStatus === 403 || resp.code === 'ACCOUNT_REJECTED' || resp.code === 'ACCOUNT_DEACTIVATED' || resp.code === 'PENDING_OWNER_APPROVAL' || resp.code === 'NOT_REGISTERED' || resp.code === 'BRANCH_NOT_ASSIGNED')) {
+          } else if (resp && (Number(resp.status) === 403 || resp.httpStatus === 403 || resp.code === 'ACCOUNT_REJECTED' || resp.code === 'ACCOUNT_DEACTIVATED' || resp.code === 'PENDING_OWNER_APPROVAL' || resp.code === 'NOT_REGISTERED' || resp.code === 'BRANCH_NOT_ASSIGNED' || !resp.authorized)) {
             // Explicit authorization denial from server
             const denialReason = resp?.reason || 'This account is not authorized to use this Olive Pizza application.';
             const code = resp?.code || 'UNAUTHORIZED';
@@ -285,39 +353,26 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
               userRole: null,
               isAuthorized: false,
               isAuthChecking: false,
+              isDatabaseUnavailable: false,
               authStatus: isPending ? 'PENDING_OWNER_APPROVAL' : code === 'ACCOUNT_REJECTED' ? 'ACCOUNT_REJECTED' : code === 'ACCOUNT_DEACTIVATED' ? 'ACCOUNT_DEACTIVATED' : null,
               restrictedReason: denialReason,
-              restrictedEmail: emailLower
-            });
-          } else {
-            // Transient network error, timeout, or server 5xx cold start
-            // DO NOT signOut! Keep session and allow retry
-            console.warn('[ManagerStore] Transient connectivity or server error during auth check:', resp?.error);
-            SoundAlertEngine.stopAlarm();
-            set({
-              user: currentUser,
-              managerProfile: null,
-              userRole: null,
-              isAuthorized: false,
-              isAuthChecking: false,
-              authStatus: null,
-              restrictedReason: resp?.error || 'Unable to connect to authorization server. Please check your internet connection and retry.',
               restrictedEmail: emailLower
             });
           }
         } catch (err: any) {
           console.error('[ManagerStore] Auth handshake network error:', err);
-
           SoundAlertEngine.stopAlarm();
+          // Transient network error or backend cold start: Retain session, set database unavailable
           set({
             user: currentUser,
             managerProfile: null,
             userRole: null,
             isAuthorized: false,
             isAuthChecking: false,
+            isDatabaseUnavailable: true,
             authStatus: null,
-            restrictedReason: err?.message || 'Authorization service unavailable. Please check your network and retry.',
-            restrictedEmail: emailLower
+            restrictedReason: null,
+            restrictedEmail: null
           });
         }
       } else {

@@ -124,22 +124,51 @@ export const LocalDataAndBackupsPage: React.FC = () => {
   };
 
   // CSV Export Handlers
-  const handleExportOrdersCsv = () => {
+  const handleExportOrdersCsv = async () => {
     try {
       setIsExportingCsv(true);
+      const branch = activeBranchId || 'branch_rjn_01';
+
+      if (isOnline) {
+        try {
+          const res = await RestaurantCsvExportService.downloadServerCsv({
+            endpoint: `/api/reports/export/orders?type=combined&branchId=${branch}&format=download`,
+            fallbackFilename: `olive-pizza-orders-${branch}-${new Date().toISOString().split('T')[0]}.csv`,
+            branchId: branch
+          });
+
+          RestaurantIndexedDbService.saveCsvExportRecord({
+            id: `csv_${Date.now()}`,
+            reportType: 'ORDERS_FULL_SERVER',
+            filename: res.filename || 'orders.csv',
+            createdAt: new Date().toISOString(),
+            rowCount: res.rowCount || 0,
+            scope: { branchId: branch, franchiseId: managerProfile?.franchiseId || 'all' },
+            status: 'SUCCESS'
+          });
+          toast.success(`Authoritative export completed: ${res.rowCount} orders downloaded from PostgreSQL`);
+          loadLocalData();
+          return;
+        } catch (serverErr: any) {
+          console.warn('[CSV Export] Backend export failed, falling back to local dataset:', serverErr.message);
+          toast('Server export unavailable. Using verified local cache...', { icon: '⚠️' });
+        }
+      }
+
+      // Offline fallback
       const res = RestaurantCsvExportService.exportOrdersCsv(allAvailableOrders);
       RestaurantCsvExportService.downloadCsv(res.filename, res.content);
 
       RestaurantIndexedDbService.saveCsvExportRecord({
         id: `csv_${Date.now()}`,
-        reportType: 'ORDERS_FULL',
+        reportType: 'ORDERS_FULL_LOCAL',
         filename: res.filename,
         createdAt: new Date().toISOString(),
         rowCount: res.rowCount,
         scope: { branchId: activeBranchId || 'branch_rjn_01', franchiseId: managerProfile?.franchiseId || 'all' },
         status: 'SUCCESS'
       });
-      toast.success(`Exported ${res.rowCount} orders to CSV`);
+      toast.success(`Exported ${res.rowCount} cached orders to CSV (Offline local backup)`);
       loadLocalData();
     } catch (err: any) {
       toast.error('Failed to export orders CSV: ' + err.message);
@@ -148,22 +177,51 @@ export const LocalDataAndBackupsPage: React.FC = () => {
     }
   };
 
-  const handleExportDailySalesCsv = () => {
+  const handleExportDailySalesCsv = async () => {
     try {
       setIsExportingCsv(true);
+      const branch = activeBranchId || 'branch_rjn_01';
+
+      if (isOnline) {
+        try {
+          const res = await RestaurantCsvExportService.downloadServerCsv({
+            endpoint: `/api/reports/export/financial?branchId=${branch}&format=download`,
+            fallbackFilename: `olive-pizza-financial-summary-${branch}-${new Date().toISOString().split('T')[0]}.csv`,
+            branchId: branch
+          });
+
+          RestaurantIndexedDbService.saveCsvExportRecord({
+            id: `csv_${Date.now()}`,
+            reportType: 'DAILY_SALES_SERVER',
+            filename: res.filename || 'financial-summary.csv',
+            createdAt: new Date().toISOString(),
+            rowCount: res.rowCount || 0,
+            scope: { branchId: branch, franchiseId: managerProfile?.franchiseId || 'all' },
+            status: 'SUCCESS'
+          });
+          toast.success(`Authoritative daily sales exported: ${res.rowCount} records from PostgreSQL`);
+          loadLocalData();
+          return;
+        } catch (serverErr: any) {
+          console.warn('[CSV Export] Backend financial export failed, falling back to local dataset:', serverErr.message);
+          toast('Server export unavailable. Using verified local cache...', { icon: '⚠️' });
+        }
+      }
+
+      // Offline fallback
       const res = RestaurantCsvExportService.exportDailySalesSummaryCsv(allAvailableOrders);
       RestaurantCsvExportService.downloadCsv(res.filename, res.content);
 
       RestaurantIndexedDbService.saveCsvExportRecord({
         id: `csv_${Date.now()}`,
-        reportType: 'DAILY_SALES_SUMMARY',
+        reportType: 'DAILY_SALES_SUMMARY_LOCAL',
         filename: res.filename,
         createdAt: new Date().toISOString(),
         rowCount: res.rowCount,
         scope: { branchId: activeBranchId || 'branch_rjn_01', franchiseId: managerProfile?.franchiseId || 'all' },
         status: 'SUCCESS'
       });
-      toast.success(`Exported ${res.rowCount} daily summaries to CSV`);
+      toast.success(`Exported ${res.rowCount} daily summaries to CSV (Offline local backup)`);
       loadLocalData();
     } catch (err: any) {
       toast.error('Failed to export sales CSV: ' + err.message);
@@ -172,22 +230,51 @@ export const LocalDataAndBackupsPage: React.FC = () => {
     }
   };
 
-  const handleExportLineItemsCsv = () => {
+  const handleExportLineItemsCsv = async () => {
     try {
       setIsExportingCsv(true);
+      const branch = activeBranchId || 'branch_rjn_01';
+
+      if (isOnline) {
+        try {
+          const res = await RestaurantCsvExportService.downloadServerCsv({
+            endpoint: `/api/reports/export/items?branchId=${branch}&format=download`,
+            fallbackFilename: `olive-pizza-order-items-${branch}-${new Date().toISOString().split('T')[0]}.csv`,
+            branchId: branch
+          });
+
+          RestaurantIndexedDbService.saveCsvExportRecord({
+            id: `csv_${Date.now()}`,
+            reportType: 'LINE_ITEMS_SERVER',
+            filename: res.filename || 'order-items.csv',
+            createdAt: new Date().toISOString(),
+            rowCount: res.rowCount || 0,
+            scope: { branchId: branch, franchiseId: managerProfile?.franchiseId || 'all' },
+            status: 'SUCCESS'
+          });
+          toast.success(`Authoritative line items exported: ${res.rowCount} items from PostgreSQL`);
+          loadLocalData();
+          return;
+        } catch (serverErr: any) {
+          console.warn('[CSV Export] Backend items export failed, falling back to local dataset:', serverErr.message);
+          toast('Server export unavailable. Using verified local cache...', { icon: '⚠️' });
+        }
+      }
+
+      // Offline fallback
       const res = RestaurantCsvExportService.exportLineItemsCsv(allAvailableOrders);
       RestaurantCsvExportService.downloadCsv(res.filename, res.content);
 
       RestaurantIndexedDbService.saveCsvExportRecord({
         id: `csv_${Date.now()}`,
-        reportType: 'LINE_ITEMS_BREAKDOWN',
+        reportType: 'LINE_ITEMS_BREAKDOWN_LOCAL',
         filename: res.filename,
         createdAt: new Date().toISOString(),
         rowCount: res.rowCount,
         scope: { branchId: activeBranchId || 'branch_rjn_01', franchiseId: managerProfile?.franchiseId || 'all' },
         status: 'SUCCESS'
       });
-      toast.success(`Exported ${res.rowCount} line items to CSV`);
+      toast.success(`Exported ${res.rowCount} line items to CSV (Offline local backup)`);
       loadLocalData();
     } catch (err: any) {
       toast.error('Failed to export items CSV: ' + err.message);

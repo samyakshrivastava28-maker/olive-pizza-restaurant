@@ -4,13 +4,13 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { useManagerStore } from '../../store/managerStore';
 import { AccessDeniedPage } from '../../pages/AccessDeniedPage';
-import { Pizza } from 'lucide-react';
+import { Pizza, AlertTriangle, RefreshCw } from 'lucide-react';
 
 import PushNotificationManager from '../../services/PushNotificationManager';
 import { PersistentActiveOrderSheet } from '../orders/PersistentActiveOrderSheet';
 
 export const AppLayout: React.FC = () => {
-  const { user, isAuthChecking, isAuthorized, restrictedReason } = useManagerStore();
+  const { user, isAuthChecking, isAuthorized, isDatabaseUnavailable, restrictedReason } = useManagerStore();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   if (isAuthChecking) {
@@ -23,6 +23,27 @@ export const AppLayout: React.FC = () => {
         <p className="text-xs text-[#a4c29c]">
           Loading kitchen operations and live telemetry...
         </p>
+      </div>
+    );
+  }
+
+  if (isDatabaseUnavailable) {
+    return (
+      <div className="min-h-screen bg-[#070b08] flex flex-col items-center justify-center p-6 text-white text-center">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mb-4 text-amber-400 animate-pulse">
+          <AlertTriangle className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-bold mb-2">Authoritative Database Temporarily Unavailable (HTTP 503)</h2>
+        <p className="text-sm text-[#a4c29c] max-w-md mb-6 leading-relaxed">
+          Your authenticated manager session is securely retained. The platform is waiting for the database service to resume.
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2 cursor-pointer"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Retry Connection
+        </button>
       </div>
     );
   }

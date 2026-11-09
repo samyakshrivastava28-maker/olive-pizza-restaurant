@@ -373,4 +373,52 @@ export class RestaurantCsvExportService {
 
     return { filename, content, rowCount: rows.length };
   }
+
+  /**
+   * Downloads authoritative CSV report from the backend, with fallback support.
+   */
+  public static async downloadServerCsv(params: {
+    endpoint: string;
+    fallbackFilename: string;
+    branchId?: string;
+  }): Promise<{ success: boolean; rowCount?: number; filename?: string }> {
+    const { endpoint, fallbackFilename } = params;
+    const { getApiUrl } = await import('../lib/api');
+    const { getCurrentAuthToken } = await import('../lib/firebase');
+
+    const token = await getCurrentAuthToken();
+    const targetUrl = getApiUrl(endpoint);
+    const headers: Record<string, string> = {
+      'X-App-Target': 'RESTAURANT_MANAGER',
+      'X-App-Source': 'RESTAURANT_MANAGER'
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(targetUrl, {
+      method: 'GET',
+      headers
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`Server export error (${res.status}): ${errText || res.statusText}`);
+    }
+
+    const disposition = res.headers.get('content-disposition');
+    let filename = fallbackFilename;
+    if (disposition && disposition.includes('filename=')) {
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      if (match && match[1]) {
+        filename = match[1];
+      }
+    }
+
+    const csvText = await res.text();
+    this.downloadCsv(filename, csvText);
+
+    const rowCount = Math.max(0, csvText.split(/\r?\n/).filter(line => line.trim().length > 0).length - 1);
+    return { success: true, rowCount, filename };
+  }
 }

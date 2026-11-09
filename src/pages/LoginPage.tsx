@@ -114,7 +114,50 @@ export const LoginPage: React.FC = () => {
         })
       });
 
+      // Handle Database Outage (HTTP 503)
+      if (resp && (Number(resp.status) === 503 || resp.httpStatus === 503 || resp.code === 'DATABASE_UNAVAILABLE')) {
+        console.warn('[LoginPage] Database temporarily unavailable (503). Retaining Firebase session.');
+        useManagerStore.setState({ isDatabaseUnavailable: true, isAuthorized: false });
+        const msg = 'Authoritative database is temporarily unavailable (HTTP 503). Session retained; please retry shortly.';
+        setError(msg);
+        toast.error(msg);
+        return false;
+      }
+
       if (resp && resp.authorized) {
+        const allowedApps: string[] = resp.allowedApps || resp.user?.allowedApps || [];
+        if (!allowedApps.includes('RESTAURANT_MANAGER')) {
+          const denialReason = 'Access denied: Your account lacks the RESTAURANT_MANAGER application grant.';
+          await signOut(auth).catch(() => {});
+          useManagerStore.setState({
+            user: null,
+            managerProfile: null,
+            userRole: null,
+            isAuthorized: false,
+            isAuthChecking: false,
+            restrictedReason: denialReason,
+            restrictedEmail: emailLower
+          });
+          setError(denialReason);
+          return false;
+        }
+
+        if (!resp.user?.branchId) {
+          const denialReason = 'Access denied: No authoritative branch assigned to your account.';
+          await signOut(auth).catch(() => {});
+          useManagerStore.setState({
+            user: null,
+            managerProfile: null,
+            userRole: null,
+            isAuthorized: false,
+            isAuthChecking: false,
+            restrictedReason: denialReason,
+            restrictedEmail: emailLower
+          });
+          setError(denialReason);
+          return false;
+        }
+
         if (resp.requiresPin) {
           // Trigger 4-digit PIN verification modal
           setPendingAuth({ user, resp });
@@ -159,6 +202,14 @@ export const LoginPage: React.FC = () => {
       return false;
     } catch (apiErr: any) {
       console.warn('[LoginPage] Authorization API error:', apiErr);
+      if (apiErr?.status === 503 || apiErr?.message?.includes('503')) {
+        console.warn('[LoginPage] DB unavailable (503). Retaining session.');
+        useManagerStore.setState({ isDatabaseUnavailable: true, isAuthorized: false });
+        const msg = 'Authoritative database is temporarily unavailable (HTTP 503). Session retained; please retry shortly.';
+        setError(msg);
+        toast.error(msg);
+        return false;
+      }
       await signOut(auth).catch(() => {});
       setError(apiErr?.message || 'Failed to communicate with authorization server.');
       return false;
