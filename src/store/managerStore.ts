@@ -464,146 +464,200 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
     if (liveOrdersUnsub) liveOrdersUnsub();
     set({ isOrdersLoading: true });
 
-    try {
-      // Authoritative Server-side Scoped Query (Section 1c)
-      // Query MUST be scoped at the Firestore query level to manager's own branchId
-      const targetBranchId = (!branchId || branchId === 'all') 
-        ? (get().managerProfile?.branchId || '')
-        : branchId;
+    let livePollInterval: ReturnType<typeof setInterval> | null = null;
+    let isDisposed = false;
+    let isFirstLoad = true;
+    let snapshotMap = new Map<string, Order>();
+    let apiMap = new Map<string, Order>();
 
+    const isSyntheticOrder = (id: string, data: any) => (
+      id.startsWith('test_') ||
+      id.startsWith('mock_') ||
+      id.startsWith('synthetic_') ||
+      id.startsWith('dummy_') ||
+      id.startsWith('online_test_') ||
+      id.startsWith('ord_test_') ||
+      (data?.customerName && /^(test|mock|synthetic|dummy|fake|archival test|idempotency test)/i.test(data.customerName)) ||
+      (data?.orderNumber && /test/i.test(String(data.orderNumber))) ||
+      (data?.orderSource && /test|mock/i.test(String(data.orderSource))) ||
+      data?.isTest === true
+    );
+
+    const parseDateVal = (val: any, fallback: Date): Date => {
+      if (!val) return fallback;
+      if (val instanceof Date) return val;
+      if (typeof val.toDate === 'function') return val.toDate();
+      if (val instanceof Timestamp) return val.toDate();
+      if (typeof val._seconds === 'number') return new Date(val._seconds * 1000);
+      if (typeof val.seconds === 'number') return new Date(val.seconds * 1000);
+      const parsed = new Date(val);
+      return isNaN(parsed.getTime()) ? fallback : parsed;
+    };
+
+    const normalizeOrder = (id: string, data: any, fallbackBranchId: string): Order => {
+      const status = (data.status || data.order_status || 'pending').toLowerCase() as OrderStatus;
+      const createdDate = parseDateVal(data.createdAt || data.created_at, new Date());
+      const updatedDate = parseDateVal(data.updatedAt || data.updated_at, createdDate);
+      return {
+        id,
+        orderNumber: data.dailyOrderNumber ? `#${data.dailyOrderNumber}` : (data.orderNumber || `#${id.slice(0, 6).toUpperCase()}`),
+        dailyOrderNumber: data.dailyOrderNumber,
+        userId: data.userId,
+        customerId: data.customerId || data.userId,
+        customerName: data.customerName || data.userName || data.deliveryAddress?.customerName || 'Walk-in Customer',
+        contactPhone: data.contactPhone || data.phone || data.userPhone || '',
+        customerEmail: data.customerEmail || data.userEmail || '',
+        deliveryAddress: data.deliveryAddress,
+        items: data.items || [],
+        subtotal: Number(data.subtotal || data.totalAmount || 0),
+        totalAmount: Number(data.totalAmount || 0),
+        deliveryFee: Number(data.deliveryFee || 0),
+        taxes: Number(data.taxes || 0),
+        packagingCharge: Number(data.packagingCharge || 0),
+        discountAmount: Number(data.discountAmount || 0),
+        status,
+        fulfillmentType: data.fulfillmentType || data.deliveryType || (data.tableNumber ? 'dine_in' : 'delivery'),
+        deliveryType: data.deliveryType || (data.tableNumber ? 'dine_in' : 'delivery'),
+        paymentStatus: data.paymentStatus || 'pending',
+        paymentMethod: data.paymentMethod || 'cash',
+        tableNumber: data.tableNumber,
+        deliveryPartnerId: data.deliveryPartnerId,
+        deliveryPartnerName: data.deliveryPartnerName,
+        deliveryPartnerPhone: data.deliveryPartnerPhone,
+        deliveryPartnerLocation: data.deliveryPartnerLocation,
+        cancellationReason: data.cancellationReason,
+        branchId: data.branchId || fallbackBranchId,
+        acceptedAt: formatIso(data.acceptedAt),
+        preparingAt: formatIso(data.preparingAt),
+        expectedReadyAt: formatIso(data.expectedReadyAt || data.estimatedReadyAt),
+        estimatedPreparationMinutes: Number(data.estimatedPreparationMinutes) || undefined,
+        readyAt: formatIso(data.readyAt),
+        partnerAssignedAt: formatIso(data.partnerAssignedAt || data.riderAssignedAt),
+        pickedUpAt: formatIso(data.pickedUpAt),
+        outForDeliveryAt: formatIso(data.outForDeliveryAt),
+        deliveredAt: formatIso(data.deliveredAt),
+        cancelledAt: formatIso(data.cancelledAt),
+        appliedCouponCode: data.appliedCouponCode || data.couponCode,
+        createdAt: createdDate,
+        updatedAt: updatedDate,
+      };
+    };
+
+    const targetBranchId = (!branchId || branchId === 'all')
+      ? (get().managerProfile?.branchId || '')
+      : branchId;
+
+    const flushMergedLiveOrders = () => {
+      if (isDisposed) return;
+      const merged = new Map<string, Order>();
+      for (const [id, o] of snapshotMap.entries()) {
+        merged.set(id, o);
+      }
+      for (const [id, o] of apiMap.entries()) {
+        const existing = merged.get(id);
+        merged.set(id, existing ? {
+          ...existing,
+          ...o,
+          items: (o.items && o.items.length > 0) ? o.items : existing.items,
+          deliveryAddress: o.deliveryAddress || existing.deliveryAddress,
+          estimatedPreparationMinutes: o.estimatedPreparationMinutes ?? existing.estimatedPreparationMinutes,
+          expectedReadyAt: o.expectedReadyAt || existing.expectedReadyAt,
+        } : o);
+      }
+
+      const activeList = Array.from(merged.values()).filter((o) => ACTIVE_ORDER_STATUSES.includes(o.status));
+      activeList.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      set({ liveOrders: activeList, isOrdersLoading: false });
+      RestaurantIndexedDbService.cacheOrders(activeList).catch(() => {});
+
+      const now = Date.now();
+      const pendingOrders = activeList.filter((o) => {
+        if (o.status !== 'pending' && o.status !== 'pending_acceptance') return false;
+        const orderTime = o.createdAt instanceof Date ? o.createdAt.getTime() : (o.createdAt ? new Date(o.createdAt).getTime() : 0);
+        return !isNaN(orderTime) && orderTime > 0 && (now - orderTime < 15 * 60 * 1000);
+      });
+      const currentStatus = get().restaurantStatus;
+      const isRestaurantOpen = currentStatus ? (currentStatus.isOpen !== false && currentStatus.acceptingOrders !== false) : true;
+      const isAlarmEnabled = deviceAlarmService.isAlarmEnabled();
+
+      if (isFirstLoad) {
+        pendingOrders.forEach((o) => NotificationDeduplicator.record(`ORDER_NEW_ALERT:${o.id}`));
+        isFirstLoad = false;
+      } else {
+        let hasNewPendingOrder = false;
+        for (const o of pendingOrders) {
+          if (NotificationDeduplicator.shouldProcess(`ORDER_NEW_ALERT:${o.id}`)) {
+            hasNewPendingOrder = true;
+          }
+        }
+        if (hasNewPendingOrder && isRestaurantOpen && isAlarmEnabled) {
+          SoundAlertEngine.startContinuousAlarm('new_order');
+        }
+      }
+
+      if (pendingOrders.length === 0 || !isRestaurantOpen || !isAlarmEnabled) {
+        SoundAlertEngine.stopAlarm();
+      }
+    };
+
+    const syncFromBackendApi = async () => {
+      if (isDisposed || !targetBranchId) return;
+      try {
+        const res = await fetchApi<{ success: boolean; orders: any[] }>(`/api/orders/live?branchId=${encodeURIComponent(targetBranchId)}`);
+        if (res && res.success && Array.isArray(res.orders)) {
+          const nextApiMap = new Map<string, Order>();
+          const profileFranchiseId = get().managerProfile?.franchiseId;
+          const normF = (id?: string) => (id || '').trim().toLowerCase().replace(/^fra_/, '');
+          for (const raw of res.orders) {
+            const oid = raw?.id || raw?.orderId;
+            if (!oid || isSyntheticOrder(oid, raw)) continue;
+            if (profileFranchiseId && raw.franchiseId && normF(raw.franchiseId) !== normF(profileFranchiseId) && profileFranchiseId !== 'all') {
+              continue;
+            }
+            nextApiMap.set(oid, normalizeOrder(oid, raw, targetBranchId));
+          }
+          apiMap = nextApiMap;
+          flushMergedLiveOrders();
+        }
+      } catch (err) {
+        console.warn('[ManagerStore] Live orders API sync notice:', err);
+      }
+    };
+
+    syncFromBackendApi();
+    livePollInterval = setInterval(syncFromBackendApi, 5000);
+
+    try {
       const scopedQuery = query(
         collection(db, 'orders'),
         where('branchId', '==', targetBranchId)
       );
 
-      // Subscribe to active orders with strict branch query scoping
-      let isFirstOrdersSnapshot = true;
       liveOrdersUnsub = onSnapshot(scopedQuery, (snapshot) => {
         const currentProfile = get().managerProfile;
         const profileFranchiseId = currentProfile?.franchiseId;
-        const activeList: Order[] = [];
+        const normF = (id?: string) => (id || '').trim().toLowerCase().replace(/^fra_/, '');
+        const nextSnapMap = new Map<string, Order>();
+
         snapshot.forEach((docSnap) => {
           const data = docSnap.data();
+          if (isSyntheticOrder(docSnap.id, data)) return;
 
-          // ── SYNTHETIC / TEST ORDER SAFEGUARD ──────────────────────────────────
-          // Never display or trigger loud kitchen alarms for test/mock/synthetic orders
-          const isSynthetic = 
-            docSnap.id.startsWith('test_') ||
-            docSnap.id.startsWith('mock_') ||
-            docSnap.id.startsWith('synthetic_') ||
-            docSnap.id.startsWith('dummy_') ||
-            docSnap.id.startsWith('online_test_') ||
-            docSnap.id.startsWith('ord_test_') ||
-            (data.customerName && /^(test|mock|synthetic|dummy|fake|archival test|idempotency test)/i.test(data.customerName)) ||
-            (data.orderNumber && /test/i.test(String(data.orderNumber))) ||
-            (data.orderSource && /test|mock/i.test(String(data.orderSource))) ||
-            data.isTest === true;
-
-          if (isSynthetic) {
-            return;
-          }
-
-          const status = (data.status || 'pending').toLowerCase() as OrderStatus;
-          const orderBranch = data.branchId || targetBranchId;
           const orderFranchise = data.franchiseId;
-
-          // Strict Franchise Isolation: If order specifies a franchiseId and it doesn't match manager's franchiseId, ignore completely!
-          const normF = (id?: string) => (id || '').trim().toLowerCase().replace(/^fra_/, '');
           if (profileFranchiseId && orderFranchise && normF(orderFranchise) !== normF(profileFranchiseId) && profileFranchiseId !== 'all') {
             return;
           }
 
+          const status = (data.status || 'pending').toLowerCase() as OrderStatus;
           if (ACTIVE_ORDER_STATUSES.includes(status)) {
-              let createdDate = new Date();
-              if (data.createdAt && typeof data.createdAt.toDate === 'function') {
-                createdDate = data.createdAt.toDate();
-              } else if (data.createdAt instanceof Timestamp) {
-                createdDate = data.createdAt.toDate();
-              } else if (typeof data.createdAt?._seconds === 'number') {
-                createdDate = new Date(data.createdAt._seconds * 1000);
-              } else if (typeof data.createdAt?.seconds === 'number') {
-                createdDate = new Date(data.createdAt.seconds * 1000);
-              } else if (data.createdAt) {
-                const parsed = new Date(data.createdAt);
-                createdDate = isNaN(parsed.getTime()) ? new Date() : parsed;
-              }
+            nextSnapMap.set(docSnap.id, normalizeOrder(docSnap.id, data, targetBranchId));
+          }
+        });
 
-              let updatedDate = createdDate;
-              if (data.updatedAt && typeof data.updatedAt.toDate === 'function') {
-                updatedDate = data.updatedAt.toDate();
-              } else if (data.updatedAt instanceof Timestamp) {
-                updatedDate = data.updatedAt.toDate();
-              } else if (typeof data.updatedAt?._seconds === 'number') {
-                updatedDate = new Date(data.updatedAt._seconds * 1000);
-              } else if (typeof data.updatedAt?.seconds === 'number') {
-                updatedDate = new Date(data.updatedAt.seconds * 1000);
-              } else if (data.updatedAt) {
-                const parsed = new Date(data.updatedAt);
-                updatedDate = isNaN(parsed.getTime()) ? createdDate : parsed;
-              }
-
-              activeList.push({
-                id: docSnap.id,
-                orderNumber: data.dailyOrderNumber ? `#${data.dailyOrderNumber}` : (data.orderNumber || `#${docSnap.id.slice(0, 6).toUpperCase()}`),
-                dailyOrderNumber: data.dailyOrderNumber,
-                userId: data.userId,
-                customerId: data.customerId || data.userId,
-                customerName: data.customerName || data.userName || data.deliveryAddress?.customerName || 'Walk-in Customer',
-                contactPhone: data.contactPhone || data.phone || data.userPhone || '',
-                customerEmail: data.customerEmail || data.userEmail || '',
-                deliveryAddress: data.deliveryAddress,
-                items: data.items || [],
-                subtotal: Number(data.subtotal || data.totalAmount || 0),
-                totalAmount: Number(data.totalAmount || 0),
-                deliveryFee: Number(data.deliveryFee || 0),
-                taxes: Number(data.taxes || 0),
-                packagingCharge: Number(data.packagingCharge || 0),
-                discountAmount: Number(data.discountAmount || 0),
-                status,
-                fulfillmentType: data.fulfillmentType || data.deliveryType || (data.tableNumber ? 'dine_in' : 'delivery'),
-                deliveryType: data.deliveryType || (data.tableNumber ? 'dine_in' : 'delivery'),
-                paymentStatus: data.paymentStatus || 'pending',
-                paymentMethod: data.paymentMethod || 'cash',
-                tableNumber: data.tableNumber,
-                deliveryPartnerId: data.deliveryPartnerId,
-                deliveryPartnerName: data.deliveryPartnerName,
-                deliveryPartnerPhone: data.deliveryPartnerPhone,
-                deliveryPartnerLocation: data.deliveryPartnerLocation,
-                cancellationReason: data.cancellationReason,
-                branchId: orderBranch,
-                acceptedAt: formatIso(data.acceptedAt),
-                preparingAt: formatIso(data.preparingAt),
-                expectedReadyAt: formatIso(data.expectedReadyAt || data.estimatedReadyAt),
-                estimatedPreparationMinutes: Number(data.estimatedPreparationMinutes) || undefined,
-                readyAt: formatIso(data.readyAt),
-                partnerAssignedAt: formatIso(data.partnerAssignedAt || data.riderAssignedAt),
-                pickedUpAt: formatIso(data.pickedUpAt),
-                outForDeliveryAt: formatIso(data.outForDeliveryAt),
-                deliveredAt: formatIso(data.deliveredAt),
-                cancelledAt: formatIso(data.cancelledAt),
-                appliedCouponCode: data.appliedCouponCode || data.couponCode,
-                createdAt: createdDate,
-                updatedAt: updatedDate,
-              });
-            }
-          });
-
-        // Detect modified orders that became 'delivered' to play single-shot chime
         snapshot.docChanges().forEach((change) => {
           if (change.type === 'modified') {
             const data = change.doc.data();
-            const isSynthetic = 
-              change.doc.id.startsWith('test_') ||
-              change.doc.id.startsWith('mock_') ||
-              change.doc.id.startsWith('synthetic_') ||
-              change.doc.id.startsWith('dummy_') ||
-              change.doc.id.startsWith('online_test_') ||
-              change.doc.id.startsWith('ord_test_') ||
-              (data.customerName && /^(test|mock|synthetic|dummy|fake|archival test|idempotency test)/i.test(data.customerName)) ||
-              (data.orderNumber && /test/i.test(String(data.orderNumber))) ||
-              data.isTest === true;
-            if (isSynthetic) return;
-
+            if (isSyntheticOrder(change.doc.id, data)) return;
             const s = (data.status || '').toLowerCase();
             if (s === 'delivered') {
               if (NotificationDeduplicator.shouldProcess(`ORDER_DELIVERED:${change.doc.id}`)) {
@@ -613,65 +667,12 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
           }
         });
 
-        // Safe in-memory chronological sort
-        activeList.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-        set({ liveOrders: activeList, isOrdersLoading: false });
-          RestaurantIndexedDbService.cacheOrders(activeList).catch(() => {});
-
-        // Sound alarm management: deduplicate by order ID and avoid continuously restarting sirens on every snapshot
-        const now = Date.now();
-        const pendingOrders = activeList.filter((o) => {
-          if (o.status !== 'pending' && o.status !== 'pending_acceptance') return false;
-          const orderTime = o.createdAt instanceof Date ? o.createdAt.getTime() : (o.createdAt ? new Date(o.createdAt).getTime() : 0);
-          return !isNaN(orderTime) && orderTime > 0 && (now - orderTime < 15 * 60 * 1000);
-        });
-        const pendingCount = pendingOrders.length;
-        const currentStatus = get().restaurantStatus;
-        const isRestaurantOpen = currentStatus ? (currentStatus.isOpen !== false && currentStatus.acceptingOrders !== false) : true;
-        const isAlarmEnabled = deviceAlarmService.isAlarmEnabled();
-
-        // On initial subscription snapshot, seed existing pending orders into deduplicator
-        // so reconnecting or refreshing the app never generates an old-order alarm storm
-        if (isFirstOrdersSnapshot) {
-          pendingOrders.forEach((o) => {
-            NotificationDeduplicator.record(`ORDER_NEW_ALERT:${o.id}`);
-          });
-          isFirstOrdersSnapshot = false;
-        } else {
-          // On subsequent snapshots, only alarm if a genuinely new order arrived
-          let hasNewPendingOrder = false;
-          snapshot.docChanges().forEach((change) => {
-            if (change.type === 'added') {
-              const data = change.doc.data();
-              const s = (data.status || '').toLowerCase();
-              if (s === 'pending' || s === 'pending_acceptance') {
-                if (NotificationDeduplicator.shouldProcess(`ORDER_NEW_ALERT:${change.doc.id}`)) {
-                  hasNewPendingOrder = true;
-                }
-              }
-            }
-          });
-
-          if (hasNewPendingOrder && isRestaurantOpen && isAlarmEnabled) {
-            SoundAlertEngine.startContinuousAlarm('new_order');
-          }
-        }
-
-        // Guarantees alarm immediately silences when all pending orders are accepted/cleared, restaurant closes, or alarm is muted
-        if (pendingCount === 0 || !isRestaurantOpen || !isAlarmEnabled) {
-          SoundAlertEngine.stopAlarm();
-        }
+        snapshotMap = nextSnapMap;
+        flushMergedLiveOrders();
       }, async (err) => {
         console.warn('[ManagerStore] Orders listener fallback to backend API:', err);
-        // Fallback to backend live orders endpoint
-        try {
-          const res = await fetchApi<{ success: boolean; orders: any[] }>(`/orders/live?branchId=${branchId}`);
-          if (res && res.success && Array.isArray(res.orders)) {
-            set({ liveOrders: res.orders as any, isOrdersLoading: false });
-            return;
-          }
-        } catch {}
-        set({ isOrdersLoading: false });
+        await syncFromBackendApi();
+        if (!isDisposed) set({ isOrdersLoading: false });
       });
     } catch (err) {
       console.error('[ManagerStore] Error setting up live orders listener:', err);
@@ -679,6 +680,11 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
     }
 
     return () => {
+      isDisposed = true;
+      if (livePollInterval) {
+        clearInterval(livePollInterval);
+        livePollInterval = null;
+      }
       SoundAlertEngine.stopAlarm();
       if (liveOrdersUnsub) liveOrdersUnsub();
     };
@@ -793,8 +799,14 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         const resolvedStatus = (res.status as OrderStatus) || nextStatus;
         // Optimistic local update (confirmed by backend success)
         set((state) => {
-          const updatedLive = state.liveOrders.map((o) => 
-            o.id === orderId ? { ...o, status: resolvedStatus, cancellationReason: reason } : o
+          const updatedLive = state.liveOrders.map((o) =>
+            o.id === orderId ? {
+              ...o,
+              status: resolvedStatus,
+              cancellationReason: reason,
+              estimatedPreparationMinutes: res.estimatedPreparationMinutes ?? o.estimatedPreparationMinutes,
+              expectedReadyAt: res.expectedReadyAt || o.expectedReadyAt
+            } : o
           ).filter((o) => ACTIVE_ORDER_STATUSES.includes(resolvedStatus) || o.id !== orderId);
 
           const remainingPending = updatedLive.filter((o) => o.status === 'pending' || o.status === 'pending_acceptance').length;

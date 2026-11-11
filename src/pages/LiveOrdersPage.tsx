@@ -442,8 +442,10 @@ export const LiveOrdersPage: React.FC = () => {
                             >
                               -
                             </button>
-                            <span className="font-mono font-extrabold text-[#c6a052] px-2 py-0.5 rounded bg-[#1b241e] border border-[#26332a] text-xs min-w-[38px] text-center">
-                              {(prepTimes[order.id] ?? order.estimatedPreparationMinutes ?? 15)}m
+                            <span className="font-mono font-extrabold text-[#c6a052] px-2 py-0.5 rounded bg-[#1b241e] border border-[#26332a] text-xs min-w-[46px] text-center">
+                              {prepTimes[order.id] !== undefined
+                                ? `${prepTimes[order.id]}m`
+                                : (order.estimatedPreparationMinutes ? `${order.estimatedPreparationMinutes}m` : 'Auto')}
                             </span>
                             <button
                               type="button"
@@ -462,7 +464,7 @@ export const LiveOrdersPage: React.FC = () => {
                         {/* Quick Presets */}
                         <div className="grid grid-cols-4 gap-1.5">
                           {[10, 15, 20, 30].map(mins => {
-                            const selected = (prepTimes[order.id] ?? order.estimatedPreparationMinutes ?? 15) === mins;
+                            const selected = (prepTimes[order.id] ?? order.estimatedPreparationMinutes) === mins;
                             return (
                               <button
                                 key={mins}
@@ -483,7 +485,7 @@ export const LiveOrdersPage: React.FC = () => {
 
                       <div className="grid grid-cols-2 gap-2">
                         <button
-                          onClick={() => handleStatusChange(order.id, 'preparing', undefined, prepTimes[order.id] ?? order.estimatedPreparationMinutes ?? 15)}
+                          onClick={() => handleStatusChange(order.id, 'preparing', undefined, prepTimes[order.id])}
                           disabled={isActionLoading}
                           className="py-2.5 rounded-xl bg-[#57854d] hover:bg-[#426939] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all disabled:opacity-50"
                         >
