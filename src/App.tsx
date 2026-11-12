@@ -11,7 +11,6 @@ import { Suspense, lazy } from 'react';
 import { DashboardPage } from './pages/DashboardPage';
 import { LiveOrdersPage } from './pages/LiveOrdersPage';
 import { LoginPage } from './pages/LoginPage';
-import { AccessDeniedPage } from './pages/AccessDeniedPage';
 
 // Auxiliary Pages (Lazy loaded for optimal bundle size and responsive startup)
 const OrderHistoryPage = lazy(() => import('./pages/OrderHistoryPage').then(m => ({ default: m.OrderHistoryPage })));
@@ -29,7 +28,7 @@ const PageLoader = () => (
 );
 
 export function App() {
-  const { initAuth, isAuthChecking, isDatabaseUnavailable, user, restrictedReason } = useManagerStore();
+  const { initAuth, isAuthChecking, isDatabaseUnavailable, user } = useManagerStore();
 
   useEffect(() => {
     const unsub = initAuth();
@@ -65,14 +64,6 @@ export function App() {
           Retry Connection
         </button>
       </div>
-    );
-  }
-
-  if (restrictedReason) {
-    return (
-      <HashRouter>
-        <AccessDeniedPage />
-      </HashRouter>
     );
   }
 

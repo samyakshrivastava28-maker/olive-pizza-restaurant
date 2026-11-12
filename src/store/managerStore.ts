@@ -443,7 +443,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       if (ridersUnsub) ridersUnsub();
       if (statusUnsub) { statusUnsub(); statusUnsub = null; }
       await signOut(auth);
-      set({ user: null, managerProfile: null, isAuthorized: false, liveOrders: [] });
+      set({ user: null, managerProfile: null, isAuthorized: false, restrictedReason: null, restrictedEmail: null, liveOrders: [] });
     } catch (e) {
       console.error('[ManagerStore] Logout error:', e);
     }
