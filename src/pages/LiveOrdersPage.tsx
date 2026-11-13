@@ -547,18 +547,25 @@ export const LiveOrdersPage: React.FC = () => {
                   )}
 
                   {isOut && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => handleStatusChange(order.id, 'delivered')}
-                        disabled={isActionLoading}
-                        className="py-2.5 rounded-xl bg-[#10b981] hover:bg-[#059669] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all disabled:opacity-50"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        Delivered
-                      </button>
+                    <div className="flex flex-col gap-2">
+                      {order.fulfillmentType === 'delivery' ? (
+                        <div className="py-2 px-3 rounded-xl bg-[#57854d]/20 border border-[#57854d]/40 text-[#a4c29c] text-xs font-semibold flex items-center justify-between">
+                          <span className="flex items-center gap-1.5"><Truck className="w-3.5 h-3.5 text-[#a4c29c]" /> Rider Delivering</span>
+                          <span className="text-[10px] text-white/60 font-mono">Geofence Delivery</span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleStatusChange(order.id, 'delivered')}
+                          disabled={isActionLoading}
+                          className="w-full py-2.5 rounded-xl bg-[#10b981] hover:bg-[#059669] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all disabled:opacity-50"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          Complete Pickup
+                        </button>
+                      )}
                       <button
                         onClick={() => setSelectedOrderDetails(order)}
-                        className="py-2.5 rounded-xl bg-[#1b241e] hover:bg-[#222d26] text-[#a4c29c] hover:text-white border border-[#26332a] font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                        className="w-full py-2.5 rounded-xl bg-[#1b241e] hover:bg-[#222d26] text-[#a4c29c] hover:text-white border border-[#26332a] font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
                       >
                         <Eye className="w-3.5 h-3.5" /> Details
                       </button>
