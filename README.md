@@ -1,4 +1,4 @@
-# 👨‍🍳 Olive Pizza Restaurant Manager & KDS (v2.2.0)
+# 👨‍🍳 Olive Pizza Restaurant Manager & KDS (v2.3.0)
 
 [![React](https://img.shields.io/badge/React-19.0-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-6.0-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
@@ -20,7 +20,7 @@ Mission-critical operations hub and Kitchen Display System (KDS) for Olive Pizza
 
 ---
 
-## 📦 Latest Release Downloads (v2.2.0)
+## 📦 Latest Release Downloads (v2.3.0)
 
 Staged in `C:\Users\RYZEN\Downloads\OlivePizza_Release_Binaries`:
 - **Windows Desktop Setup**: `OlivePizza_RestaurantManager_Setup_v2.2.0.exe` (83.78 MB)
