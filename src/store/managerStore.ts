@@ -773,7 +773,10 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       let endpoint = `/api/orders/${orderId}/status`;
       let body: any = { status: nextStatus };
 
-      if (nextStatus === 'preparing' || nextStatus === 'accepted') {
+      if (nextStatus === 'delivered') {
+        body.paymentCollected = true;
+        body.paymentStatus = 'PAID';
+      } else if (nextStatus === 'preparing' || nextStatus === 'accepted') {
         endpoint = `/api/orders/${orderId}/accept`;
         if (typeof estimatedPreparationMinutes === 'number' && estimatedPreparationMinutes > 0) {
           body.estimatedPreparationMinutes = estimatedPreparationMinutes;
