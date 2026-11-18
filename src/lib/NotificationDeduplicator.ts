@@ -65,4 +65,15 @@ export class NotificationDeduplicator {
     this.record(eventId);
     return true;
   }
+
+  static silenceOrder(orderId: string): void {
+    if (!orderId) return;
+    this.record(`SILENCED_ORDER:${orderId}`);
+    this.record(`ORDER_ALERT:${orderId}`);
+  }
+
+  static isOrderSilenced(orderId: string): boolean {
+    if (!orderId) return false;
+    return this.isDuplicate(`SILENCED_ORDER:${orderId}`);
+  }
 }

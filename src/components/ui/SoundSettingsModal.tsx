@@ -247,38 +247,46 @@ export const SoundSettingsModal: React.FC<SoundSettingsModalProps> = ({ isOpen, 
               </button>
             </div>
 
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
               {ALERT_SOUND_OPTIONS.map((opt) => {
                 const isSelected = settings.selectedSoundId === opt.id;
                 return (
                   <div
                     key={opt.id}
-                    onClick={() => handleUpdate({ selectedSoundId: opt.id })}
-                    className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                    onClick={() => {
+                      handleUpdate({ selectedSoundId: opt.id });
+                      SoundAlertEngine.previewSoundFile(opt.file, opt.id);
+                      toast.success(`Selected: ${opt.name}`, { id: 'sound-select' });
+                    }}
+                    className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
                       isSelected
-                        ? 'bg-[#57854d]/20 border-[#57854d] text-white shadow-xs'
+                        ? 'bg-gradient-to-r from-[#57854d]/25 to-[#57854d]/10 border-[#57854d] text-white shadow-md shadow-[#57854d]/10'
                         : 'bg-[#141b16] border-[#26332a] text-[#a4c29c] hover:border-[#57854d]/50 hover:text-white'
                     }`}
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold truncate text-white">{opt.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-white">{opt.name}</span>
                         {isSelected && (
-                          <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                          <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] font-black uppercase tracking-wider">
+                            Active
+                          </span>
                         )}
                       </div>
-                      <p className="text-[10px] text-[#7ba372] truncate">{opt.description}</p>
+                      <p className="text-[11px] text-[#86a77d] mt-0.5 leading-snug">{opt.description}</p>
                     </div>
 
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        SoundAlertEngine.previewSoundFile(opt.file);
+                        SoundAlertEngine.previewSoundFile(opt.file, opt.id);
+                        toast('Auditioning sound...', { icon: '🔊', id: 'sound-preview' });
                       }}
-                      className="p-1.5 rounded-lg bg-[#1b241e] hover:bg-[#26332a] text-[#c6a052] hover:text-white border border-[#26332a] transition shrink-0"
+                      className="p-2.5 rounded-xl bg-[#1b241e] hover:bg-[#57854d]/30 text-[#c6a052] hover:text-white border border-[#26332a] transition active:scale-95 shrink-0"
                       title={`Preview ${opt.name}`}
                     >
-                      <Play className="w-3 h-3 fill-current" />
+                      <Play className="w-3.5 h-3.5 fill-current" />
                     </button>
                   </div>
                 );
@@ -295,7 +303,7 @@ export const SoundSettingsModal: React.FC<SoundSettingsModalProps> = ({ isOpen, 
               <button
                 onClick={handleTestNewOrderSound}
                 disabled={isPlayingTest}
-                className="py-2.5 px-3 rounded-xl bg-[#1b241e] hover:bg-[#222d26] border border-[#26332a] text-xs font-bold text-white flex items-center justify-center gap-1.5 transition active:scale-98 disabled:opacity-60"
+                className="py-2.5 px-3 rounded-xl bg-[#1b241e] hover:bg-[#222d26] border border-[#26332a] text-xs font-bold text-white flex items-center justify-center gap-1.5 transition active:scale-98 disabled:opacity-60 cursor-pointer"
               >
                 <Play className={`w-3.5 h-3.5 text-amber-400 ${isPlayingTest ? 'animate-spin' : ''}`} />
                 <span>{isPlayingTest ? 'Testing...' : 'Test Order Alarm'}</span>
@@ -303,10 +311,34 @@ export const SoundSettingsModal: React.FC<SoundSettingsModalProps> = ({ isOpen, 
 
               <button
                 onClick={handleTestDeliveredChime}
-                className="py-2.5 px-3 rounded-xl bg-[#1b241e] hover:bg-[#222d26] border border-[#26332a] text-xs font-bold text-white flex items-center justify-center gap-1.5 transition active:scale-98"
+                className="py-2.5 px-3 rounded-xl bg-[#1b241e] hover:bg-[#222d26] border border-[#26332a] text-xs font-bold text-white flex items-center justify-center gap-1.5 transition active:scale-98 cursor-pointer"
               >
                 <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Test Delivered Chime</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  SoundAlertEngine.unlockAudio();
+                  SoundAlertEngine.playSound('prep_timer_ended');
+                  toast.success('Auditioning Prep Timer Finish Bell 🔔');
+                }}
+                className="py-2.5 px-3 rounded-xl bg-[#1b241e] hover:bg-[#222d26] border border-[#26332a] text-xs font-bold text-white flex items-center justify-center gap-1.5 transition active:scale-98 cursor-pointer"
+              >
+                <Bell className="w-3.5 h-3.5 text-[#c6a052]" />
+                <span>Test Timer Finished</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  SoundAlertEngine.unlockAudio();
+                  SoundAlertEngine.playSound('status_changed');
+                  toast.success('Auditioning Status Update Chime ✨');
+                }}
+                className="py-2.5 px-3 rounded-xl bg-[#1b241e] hover:bg-[#222d26] border border-[#26332a] text-xs font-bold text-white flex items-center justify-center gap-1.5 transition active:scale-98 cursor-pointer"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Test Status Chime</span>
               </button>
             </div>
 

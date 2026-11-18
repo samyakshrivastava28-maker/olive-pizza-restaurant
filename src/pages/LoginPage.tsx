@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { signInWithCustomToken } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { signInWithCustomToken, signInWithPopup } from 'firebase/auth';
+import { auth, googleProvider } from '../lib/firebase';
+import { Capacitor } from '@capacitor/core';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   Mail, 
@@ -69,6 +70,116 @@ export const LoginPage: React.FC = () => {
     }, 1000);
     return () => clearInterval(timer);
   }, [resendCooldown]);
+
+  // Handle Google Sign-In with Authoritative Backend Authorization
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      let idToken: string | null = null;
+      let displayName: string = '';
+
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
+          // Native Android Google Play Services sign in directly in-app (avoids opening browser)
+          const result = await FirebaseAuthentication.signInWithGoogle({
+            useCredentialManager: false,
+            scopes: ['profile', 'email']
+          });
+          const tokenRes = await FirebaseAuthentication.getIdToken({ forceRefresh: true }).catch(() => null);
+          idToken = tokenRes?.token || (result.credential as any)?.idToken || null;
+          displayName = result.user?.displayName || '';
+        } catch (capErr: any) {
+          console.warn('[LoginPage] Native Google Sign-In notice:', capErr);
+          const msg = capErr?.message || '';
+          if (msg.includes('cancel') || msg.includes('12501') || capErr?.code === '12501') {
+            setError('Google sign in was cancelled.');
+            setIsLoading(false);
+            return;
+          }
+          // Do not fall back to browser popup on native mobile
+          setError(`Google sign-in error: ${msg || 'Google Play Services unavailable'}`);
+          setIsLoading(false);
+          return;
+        }
+      } else {
+        // Desktop / Web Browser
+        const res = await signInWithPopup(auth, googleProvider);
+        idToken = await res.user.getIdToken(true);
+        displayName = res.user.displayName || '';
+      }
+
+      if (!idToken) {
+        throw new Error('Could not obtain Google authentication token. Please try again.');
+      }
+
+      // Authoritative management verification
+      const resp = await fetchApi<any>('/api/auth/management/google-signin', {
+        method: 'POST',
+        body: JSON.stringify({
+          idToken,
+          targetApp: 'RESTAURANT_MANAGER'
+        })
+      });
+
+      if (!resp.success || !resp.authorized) {
+        if (Capacitor.isNativePlatform()) {
+          const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
+          await FirebaseAuthentication.signOut().catch(() => {});
+        }
+        await auth.signOut().catch(() => {});
+        setError(resp.message || 'This Google account is not authorized for Restaurant Management. Please contact Olive Pizza administration.');
+        setIsLoading(false);
+        return;
+      }
+
+      if (resp.customToken) {
+        try {
+          await signInWithCustomToken(auth, resp.customToken);
+        } catch {}
+      }
+
+      const u = resp.user || {};
+      const currentUser = auth.currentUser;
+
+      useManagerStore.setState({
+        user: currentUser || { uid: u.uid, email: u.email, displayName: u.name } as any,
+        managerProfile: {
+          uid: u.uid,
+          name: u.name || displayName || 'Restaurant Manager',
+          email: u.email,
+          role: u.role as any || 'manager',
+          branchId: u.branchId || 'branch_rjn_main',
+          branchName: u.branchName || 'Olive Pizza — Rajnandgaon HQ',
+          permissions: u.permissions || ['*'],
+          isActive: true
+        },
+        userRole: u.role || 'manager',
+        isAuthorized: true,
+        isAuthChecking: false,
+        restrictedReason: null,
+        restrictedEmail: null,
+        activeBranchId: u.branchId || 'branch_rjn_main',
+        activeBranchName: u.branchName || 'Olive Pizza — Rajnandgaon HQ',
+        permissions: u.permissions || ['*']
+      });
+
+      toast.success(`Welcome back, ${u.name || displayName || 'Manager'}!`);
+      requestPostLoginNotificationPermissions().catch(() => {});
+      navigate(from, { replace: true });
+    } catch (err: any) {
+      if (err?.code === 'auth/popup-closed-by-user' || err?.message?.includes('closed-by-user')) {
+        setError('Google sign in was cancelled.');
+      } else {
+        console.error('[LoginPage] Google sign in error:', err);
+        setError(err?.message || 'Google sign in failed. Please try again.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Handle Step 1: Pre-Check Eligibility
   const handleCheckEligibility = async (e: React.FormEvent) => {
@@ -139,22 +250,26 @@ export const LoginPage: React.FC = () => {
     const clean = val.replace(/\D/g, '');
     if (!clean && val !== '') return;
 
-    const newCode = [...code];
-
     // If user pasted multi-digit text
     if (clean.length > 1) {
       const pastedDigits = clean.slice(0, 6).split('');
-      pastedDigits.forEach((d, i) => {
-        if (i < 6) newCode[i] = d;
+      setCode(prev => {
+        const next = [...prev];
+        pastedDigits.forEach((d, i) => {
+          if (i < 6) next[i] = d;
+        });
+        return next;
       });
-      setCode(newCode);
       const nextFocus = Math.min(pastedDigits.length, 5);
       inputRefs.current[nextFocus]?.focus();
       return;
     }
 
-    newCode[index] = clean;
-    setCode(newCode);
+    setCode(prev => {
+      const next = [...prev];
+      next[index] = clean;
+      return next;
+    });
 
     // Auto-advance to next input
     if (clean && index < 5) {
@@ -317,7 +432,35 @@ export const LoginPage: React.FC = () => {
 
         {/* STEP 1: ELIGIBILITY PRE-CHECK */}
         {step === 'check' && (
-          <form onSubmit={handleCheckEligibility} className="space-y-5">
+          <div className="space-y-5">
+            {/* 3D Continue with Google Button */}
+            <button
+              type="button"
+              disabled={isLoading}
+              onClick={handleGoogleSignIn}
+              className="w-full py-3.5 px-4 bg-gradient-to-b from-[#18231b] to-[#0f1712] hover:from-[#213025] hover:to-[#141f18] active:scale-[0.98] border border-[#2b3c2f] hover:border-[#4d7353] text-white font-bold text-sm rounded-2xl transition-all shadow-lg hover:shadow-emerald-950/40 flex items-center justify-center gap-3 cursor-pointer group relative overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+              <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+              </svg>
+              <span>Continue with Google</span>
+            </button>
+
+            {/* Sleek Divider */}
+            <div className="relative flex items-center justify-center my-1">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-[#1b261e]" />
+              </div>
+              <div className="relative px-3 bg-[#0e1410] text-[10px] uppercase font-bold text-[#62806b] tracking-wider">
+                or sign in with email / phone
+              </div>
+            </div>
+
+            <form onSubmit={handleCheckEligibility} className="space-y-5">
             {/* Verification Method Tabs */}
             <div className="grid grid-cols-2 p-1 bg-[#090d0a] border border-[#1b261e] rounded-2xl">
               <button
@@ -416,6 +559,7 @@ export const LoginPage: React.FC = () => {
               )}
             </button>
           </form>
+        </div>
         )}
 
         {/* STEP 2: TEMPORARY 6-DIGIT CODE VERIFICATION */}
@@ -454,6 +598,8 @@ export const LoginPage: React.FC = () => {
                 {code.map((digit, idx) => (
                   <input
                     key={idx}
+                    id={`otp-input-${idx}`}
+                    data-index={idx}
                     ref={el => { inputRefs.current[idx] = el; }}
                     type="text"
                     inputMode="numeric"

@@ -1,14 +1,14 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useManagerStore } from '../store/managerStore';
-import { db } from '../lib/firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { app } from '../lib/firebase';
 import { fetchApi, getWebSocketUrl } from '../lib/api';
 import { NotificationPermissionManager } from '../lib/NotificationPermissionManager';
 import { SoundAlertEngine } from '../lib/SoundAlertEngine';
 import { NotificationDeduplicator } from '../lib/NotificationDeduplicator';
 import { Bell, Volume2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { AliveOrderAlarmModal, type AliveOrderData } from '../components/notifications/AliveOrderAlarmModal';
 
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
@@ -38,8 +38,29 @@ export default function PushNotificationManager() {
   const navigate = useNavigate();
   const { user, managerProfile, activeBranchId } = useManagerStore();
   const [showPromptBanner, setShowPromptBanner] = useState(false);
+  const [activeAliveOrder, setActiveAliveOrder] = useState<AliveOrderData | null>(null);
   const isRegisteredRef = useRef(false);
   const registeredTokenRef = useRef<string | null>(null);
+
+  // Global test hook for 3D Alive Order Alarm diagnostics
+  useEffect(() => {
+    (window as any).__triggerAliveOrderAlarm = (customData?: Partial<AliveOrderData>) => {
+      SoundAlertEngine.unlockAudio();
+      SoundAlertEngine.startContinuousAlarm('new_order');
+      setActiveAliveOrder({
+        orderId: customData?.orderId || `ord_${Date.now()}`,
+        orderNumber: customData?.orderNumber || '#OP-8892',
+        customerName: customData?.customerName || 'Samyak (VIP)',
+        amount: customData?.amount || 549,
+        itemCount: customData?.itemCount || 3,
+        orderType: customData?.orderType || 'Delivery',
+        createdAt: new Date().toISOString()
+      });
+    };
+    return () => {
+      delete (window as any).__triggerAliveOrderAlarm;
+    };
+  }, []);
 
   // Create Android Notification Channels for High-Urgency Orders
   const createChannels = useCallback(async () => {
@@ -83,8 +104,8 @@ export default function PushNotificationManager() {
       if (data.type === 'START_ALERT') {
         const orderId = data.orderId;
         if (isSyntheticOrder(orderId, data)) return;
-        const dedupKey = `NEW_ORDER:${orderId || Date.now()}`;
-        if (!orderId || NotificationDeduplicator.shouldProcess(dedupKey)) {
+        const dedupKey = `ORDER_ALERT:${orderId || Date.now()}`;
+        if (!orderId || (NotificationDeduplicator.shouldProcess(dedupKey) && !NotificationDeduplicator.isOrderSilenced(orderId))) {
           SoundAlertEngine.startContinuousAlarm('new_order');
         }
       } else if (data.type === 'ORDER_DELIVERED') {
@@ -94,6 +115,9 @@ export default function PushNotificationManager() {
           SoundAlertEngine.playOrderDelivered();
         }
       } else if (data.type === 'STOP_ALERT') {
+        if (data.orderId) {
+          NotificationDeduplicator.silenceOrder(data.orderId);
+        }
         SoundAlertEngine.stopAlarm();
       }
     };
@@ -125,6 +149,9 @@ export default function PushNotificationManager() {
         });
         registeredTokenRef.current = electronToken;
         isRegisteredRef.current = true;
+        try {
+          localStorage.setItem('olive_restaurant_fcm_token', electronToken);
+        } catch {}
         return;
       }
 
@@ -159,6 +186,9 @@ export default function PushNotificationManager() {
             }).catch(() => {});
             registeredTokenRef.current = pushToken.value;
             isRegisteredRef.current = true;
+            try {
+              localStorage.setItem('olive_restaurant_fcm_token', pushToken.value);
+            } catch {}
           }
         });
 
@@ -177,6 +207,12 @@ export default function PushNotificationManager() {
           // It is never treated as authoritative order data. Authoritative state is always fetched
           // from Firestore / backend via live listener or navigation to /live-orders.
 
+          // STRICT APP ISOLATION: Ignore customer-targeted notifications in restaurant app
+          const targetApp = String(data.targetApp || data.target_app || data.appName || '').toLowerCase().trim();
+          if (targetApp === 'customer' || normType.includes('CUSTOMER') || data.category === 'order_update') {
+            return;
+          }
+
           if (normType === 'ORDER_DELIVERED' || status === 'delivered') {
             const dedupKey = `ORDER_DELIVERED:${orderId || Date.now()}`;
             if (NotificationDeduplicator.shouldProcess(dedupKey)) {
@@ -187,13 +223,21 @@ export default function PushNotificationManager() {
             normType === 'NEW_ORDER' ||
             normType === 'ORDER_CREATED' ||
             status === 'pending' ||
-            status === 'pending_acceptance' ||
-            (!normType && !status)
+            status === 'pending_acceptance'
           ) {
             if (isSyntheticOrder(orderId, data)) return;
-            const dedupKey = `NEW_ORDER:${orderId || Date.now()}`;
-            if (NotificationDeduplicator.shouldProcess(dedupKey)) {
+            const dedupKey = `ORDER_ALERT:${orderId || Date.now()}`;
+            if (NotificationDeduplicator.shouldProcess(dedupKey) && !NotificationDeduplicator.isOrderSilenced(orderId)) {
               SoundAlertEngine.startContinuousAlarm('new_order');
+              setActiveAliveOrder({
+                orderId: orderId || `ord_${Date.now()}`,
+                orderNumber: data.orderNumber || `#${orderId ? orderId.slice(-6).toUpperCase() : 'NEW'}`,
+                customerName: data.customerName || data.userName || 'Online Customer',
+                amount: Number(data.totalAmount || data.amount || 0),
+                itemCount: Number(data.itemCount || (Array.isArray(data.items) ? data.items.length : 1)),
+                orderType: data.orderType || 'Delivery',
+                createdAt: new Date().toISOString()
+              });
               toast.success(`🍕 New incoming order #${orderId ? orderId.slice(-6).toUpperCase() : 'NEW'}!`, {
                 duration: 5000,
                 id: orderId ? `toast-${orderId}` : undefined
@@ -224,7 +268,6 @@ export default function PushNotificationManager() {
       if ('serviceWorker' in navigator && 'Notification' in window && Notification.permission === 'granted') {
         const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js').catch(() => null);
         const { getMessaging, getToken, isSupported } = await import('firebase/messaging');
-        const { app } = await import('../lib/firebase');
         const supported = await isSupported().catch(() => false);
         if (supported) {
           const messaging = getMessaging(app);
@@ -249,6 +292,9 @@ export default function PushNotificationManager() {
             });
             registeredTokenRef.current = currentToken;
             isRegisteredRef.current = true;
+            try {
+              localStorage.setItem('olive_restaurant_fcm_token', currentToken);
+            } catch {}
           }
         }
       }
@@ -307,79 +353,8 @@ export default function PushNotificationManager() {
     }
   };
 
-  // 4. Realtime Listener for New Orders in this branch
-  useEffect(() => {
-    if (!user || !managerProfile) {
-      SoundAlertEngine.stopAlarm();
-      return;
-    }
-    const branchId = activeBranchId || managerProfile.branchId || '';
-    const profileFranchiseId = managerProfile.franchiseId;
-
-    const q = query(
-      collection(db, 'orders'),
-      where('branchId', '==', branchId),
-      where('status', 'in', ['pending', 'pending_acceptance'])
-    );
-
-    let isInitialSnapshot = true;
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (isInitialSnapshot) {
-        isInitialSnapshot = false;
-        snapshot.docs.forEach((doc) => {
-          NotificationDeduplicator.record(`NEW_ORDER:${doc.id}`);
-        });
-        return;
-      }
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === 'added') {
-          const order = { id: change.doc.id, ...change.doc.data() } as any;
-
-          // ── SYNTHETIC / TEST ORDER SAFEGUARD ──────────────────────────────────
-          if (isSyntheticOrder(order.id, order)) {
-            return;
-          }
-
-          // Strict Franchise Isolation: Ignore alarms from other franchises
-          const normF = (id?: string) => (id || '').trim().toLowerCase().replace(/^fra_/, '');
-          if (profileFranchiseId && order.franchiseId && normF(order.franchiseId) !== normF(profileFranchiseId) && profileFranchiseId !== 'all') {
-            return;
-          }
-
-          const eventId = `NEW_ORDER:${order.id}`;
-
-          // Check deduplication
-          if (NotificationDeduplicator.shouldProcess(eventId)) {
-            // Trigger emergency audio chime loop
-            SoundAlertEngine.startContinuousAlarm('new_order');
-
-            // Trigger Electron native notification if available
-            if (typeof window !== 'undefined' && (window as any).electronAPI?.showNativeNotification) {
-              (window as any).electronAPI.showNativeNotification({
-                title: `🍕 NEW ORDER #${order.dailyOrderNumber || order.orderNumber || order.id.slice(-6).toUpperCase()}`,
-                body: `₹${order.finalTotal || order.totalAmount} • ${order.items?.length || 1} items • ${order.paymentMethod || 'COD'}`,
-                orderId: order.id
-              });
-            }
-
-            toast.success(`🍕 New incoming order #${order.dailyOrderNumber || order.orderNumber || order.id.slice(-6).toUpperCase()}!`, {
-              duration: 5000,
-              id: `toast-${order.id}`
-            });
-          }
-        }
-      });
-    }, (err) => {
-      console.warn('[Restaurant PushManager] Realtime listener error:', err);
-    });
-
-    return () => {
-      SoundAlertEngine.stopAlarm();
-      unsubscribe();
-    };
-  }, [user, managerProfile, activeBranchId]);
-
-  // 4b. Resilient WebSocket listener with Monotonic Sequence Sync for dropped Wi-Fi
+  // 4. Resilient WebSocket listener with Monotonic Sequence Sync for dropped Wi-Fi
+  // Note: managerStore.ts is the single authoritative listener for Firestore orders, avoiding duplicate alarms.
   useEffect(() => {
     if (!user || !managerProfile) return;
     const branchId = activeBranchId || managerProfile.branchId || '';
@@ -426,9 +401,18 @@ export default function PushNotificationManager() {
               for (const missed of msg.data.missedEvents) {
                 if (missed.type === 'order.created' && missed.data) {
                   if (isSyntheticOrder(missed.data.orderId, missed.data)) continue;
-                  const dedupKey = `NEW_ORDER:${missed.data.orderId}`;
-                  if (NotificationDeduplicator.shouldProcess(dedupKey)) {
+                  const dedupKey = `ORDER_ALERT:${missed.data.orderId}`;
+                  if (NotificationDeduplicator.shouldProcess(dedupKey) && !NotificationDeduplicator.isOrderSilenced(missed.data.orderId)) {
                     SoundAlertEngine.startContinuousAlarm('new_order');
+                    setActiveAliveOrder({
+                      orderId: missed.data.orderId,
+                      orderNumber: missed.data.orderNumber || `#${missed.data.orderId.slice(-6).toUpperCase()}`,
+                      customerName: missed.data.customerName || missed.data.userName || 'Online Customer',
+                      amount: Number(missed.data.totalAmount || missed.data.amount || missed.data.finalAmount || 0),
+                      itemCount: Array.isArray(missed.data.items) ? missed.data.items.length : 1,
+                      orderType: missed.data.orderType || 'Delivery',
+                      createdAt: new Date().toISOString()
+                    });
                     toast.success(`🍕 New incoming order #${missed.data.orderId.slice(-6).toUpperCase()}!`, {
                       duration: 5000,
                       id: `toast-${missed.data.orderId}`
@@ -444,9 +428,18 @@ export default function PushNotificationManager() {
             // Handle live order.created event
             if (msg.type === 'order.created' && msg.data) {
               if (!isSyntheticOrder(msg.data.orderId, msg.data)) {
-                const dedupKey = `NEW_ORDER:${msg.data.orderId}`;
-                if (NotificationDeduplicator.shouldProcess(dedupKey)) {
+                const dedupKey = `ORDER_ALERT:${msg.data.orderId}`;
+                if (NotificationDeduplicator.shouldProcess(dedupKey) && !NotificationDeduplicator.isOrderSilenced(msg.data.orderId)) {
                   SoundAlertEngine.startContinuousAlarm('new_order');
+                  setActiveAliveOrder({
+                    orderId: msg.data.orderId,
+                    orderNumber: msg.data.orderNumber || `#${msg.data.orderId.slice(-6).toUpperCase()}`,
+                    customerName: msg.data.customerName || msg.data.userName || 'Online Customer',
+                    amount: Number(msg.data.totalAmount || msg.data.amount || msg.data.finalAmount || 0),
+                    itemCount: Array.isArray(msg.data.items) ? msg.data.items.length : 1,
+                    orderType: msg.data.orderType || 'Delivery',
+                    createdAt: new Date().toISOString()
+                  });
                   toast.success(`🍕 New incoming order #${msg.data.orderId.slice(-6).toUpperCase()}!`, {
                     duration: 5000,
                     id: `toast-${msg.data.orderId}`
@@ -528,6 +521,24 @@ export default function PushNotificationManager() {
           </div>
         </div>
       )}
+      {/* 3D Alive Incoming Order Notification & Siren Modal */}
+      <AliveOrderAlarmModal
+        order={activeAliveOrder}
+        onAcknowledge={(orderId) => {
+          if (orderId) {
+            NotificationDeduplicator.silenceOrder(orderId);
+          }
+          setActiveAliveOrder(null);
+          SoundAlertEngine.stopAlarm();
+        }}
+        onDismiss={() => {
+          if (activeAliveOrder?.orderId) {
+            NotificationDeduplicator.silenceOrder(activeAliveOrder.orderId);
+          }
+          setActiveAliveOrder(null);
+          SoundAlertEngine.stopAlarm();
+        }}
+      />
     </>
   );
 }

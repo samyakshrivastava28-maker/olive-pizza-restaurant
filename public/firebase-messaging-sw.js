@@ -31,30 +31,52 @@ self.addEventListener('unhandledrejection', (event) => {
 
 messaging.onBackgroundMessage(async (payload) => {
   const data = payload.data || {};
+  if (!data || Object.keys(data).length === 0) {
+    console.warn('[SW Safe Mode] Discarding background message: empty operational payload');
+    return;
+  }
+
   if (data.action === 'STOP_ALERT' || data.action === 'stop_alert') {
     BROADCAST.postMessage({ type: 'STOP_ALERT', orderId: data.orderId });
     return;
   }
 
-  const tag = data.tag || `notification_${Date.now()}`;
-  const notifTitle = payload.notification?.title || data.title || 'Olive Pizza Restaurant & Kitchen';
-  const notifBody = payload.notification?.body || data.body || 'New operational update received';
+  // STRICT APP ISOLATION: Discard customer or delivery notifications in restaurant service worker
+  const targetApp = String(data.targetApp || data.target_app || data.appName || '').toLowerCase().trim();
+  if (targetApp === 'customer' || targetApp === 'delivery' || data.category === 'order_update') {
+    return;
+  }
+
   const orderId = data.orderId || data.order_id;
+  // Synthetic / Test order safeguard
+  if (orderId && (String(orderId).startsWith('test_') || String(orderId).startsWith('mock_') || String(orderId).startsWith('synthetic_'))) {
+    return;
+  }
+
+  const notifTitle = payload.notification?.title || data.title;
+  const notifBody = payload.notification?.body || data.body;
+  if (!notifTitle && !notifBody) {
+    console.warn('[SW Safe Mode] Discarding background message: missing title and body');
+    return;
+  }
+
+  const tag = data.tag || (orderId ? `order_${orderId}` : `notification_${Date.now()}`);
   const stage = data.stage || 'update';
   const normType = String(data.type || data.notificationType || '').toUpperCase();
   const status = String(data.status || '').toLowerCase();
   const isDelivered = normType === 'ORDER_DELIVERED' || status === 'delivered';
+  const isNewOrder = normType === 'NEW_ORDER' || normType === 'ORDER_CREATED' || normType === 'RESTAURANT_NEW_ORDER_ALARM' || status === 'pending' || status === 'pending_acceptance';
   const targetUrl = orderId ? `/#/live-orders?orderId=${encodeURIComponent(orderId)}` : '/#/live-orders';
 
   const options = {
-    body: notifBody,
+    body: notifBody || 'New operational update received',
     icon: ICON,
     badge: BADGE,
     tag,
     renotify: true,
-    requireInteraction: !isDelivered,
+    requireInteraction: isNewOrder,
     silent: false,
-    vibrate: isDelivered ? [200, 100, 200] : [300, 200, 300, 200, 300],
+    vibrate: isDelivered ? [200, 100, 200] : (isNewOrder ? [300, 200, 300, 200, 300] : [100]),
     data: {
       url: targetUrl,
       orderId,
@@ -66,10 +88,10 @@ messaging.onBackgroundMessage(async (payload) => {
 
   if (isDelivered) {
     BROADCAST.postMessage({ type: 'ORDER_DELIVERED', orderId, sound: 'order_delivered' });
-  } else {
+  } else if (isNewOrder) {
     BROADCAST.postMessage({ type: 'START_ALERT', orderId, sound: 'new_order' });
   }
-  await self.registration.showNotification(notifTitle, options);
+  await self.registration.showNotification(notifTitle || 'Olive Pizza Restaurant & Kitchen', options);
 });
 
 self.addEventListener('notificationclick', (event) => {

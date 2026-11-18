@@ -77,7 +77,7 @@ interface ManagerState {
   initAuth: () => () => void;
   setAuthorizedProfile: (profile: ManagerAccount) => void;
   logout: () => Promise<void>;
-  setActiveBranch: (branchId: string, branchName?: string) => void;
+  setActiveBranch: (branchId: string, branchName?: string, franchiseId?: string) => void;
   subscribeToLiveOrders: (branchId: string) => () => void;
   subscribeToRestaurantStatus: (branchId: string) => () => void;
   toggleRestaurantStatus: (isOpen: boolean, reason?: string) => Promise<boolean>;
@@ -95,6 +95,7 @@ interface ManagerState {
 let liveOrdersUnsub: Unsubscribe | null = null;
 let statusUnsub: Unsubscribe | null = null;
 let ridersUnsub: Unsubscribe | null = null;
+let livePollInterval: ReturnType<typeof setInterval> | null = null;
 
 const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
   'pending',
@@ -115,6 +116,79 @@ export const formatIso = (val: any): string | undefined => {
   if (typeof val.seconds === 'number') return new Date(val.seconds * 1000).toISOString();
   if (val instanceof Date) return val.toISOString();
   return undefined;
+};
+
+export const isSyntheticOrder = (id: string, data: any) => (
+  id.startsWith('test_') ||
+  id.startsWith('mock_') ||
+  id.startsWith('synthetic_') ||
+  id.startsWith('dummy_') ||
+  id.startsWith('online_test_') ||
+  id.startsWith('ord_test_') ||
+  (data?.customerName && /^(test|mock|synthetic|dummy|fake|archival test|idempotency test)/i.test(data.customerName)) ||
+  (data?.orderNumber && /test/i.test(String(data.orderNumber))) ||
+  (data?.orderSource && /test|mock/i.test(String(data.orderSource))) ||
+  data?.isTest === true
+);
+
+export const parseDateVal = (val: any, fallback: Date): Date => {
+  if (!val) return fallback;
+  if (val instanceof Date) return val;
+  if (typeof val.toDate === 'function') return val.toDate();
+  if (val instanceof Timestamp) return val.toDate();
+  if (typeof val._seconds === 'number') return new Date(val._seconds * 1000);
+  if (typeof val.seconds === 'number') return new Date(val.seconds * 1000);
+  const parsed = new Date(val);
+  return isNaN(parsed.getTime()) ? fallback : parsed;
+};
+
+export const normalizeOrder = (id: string, data: any, fallbackBranchId: string): Order => {
+  const status = (data.status || data.order_status || 'pending').toLowerCase() as OrderStatus;
+  const createdDate = parseDateVal(data.createdAt || data.created_at, new Date());
+  const updatedDate = parseDateVal(data.updatedAt || data.updated_at, createdDate);
+  return {
+    id,
+    orderNumber: data.dailyOrderNumber ? `#${data.dailyOrderNumber}` : (data.orderNumber || (data.daily_order_no ? `#${data.daily_order_no}` : `#${id.slice(0, 6).toUpperCase()}`)),
+    dailyOrderNumber: data.dailyOrderNumber || data.daily_order_no,
+    userId: data.userId || data.customer_id,
+    customerId: data.customerId || data.userId || data.customer_id,
+    customerName: data.customerName || data.customer_name || data.userName || data.deliveryAddress?.customerName || 'Walk-in Customer',
+    contactPhone: data.contactPhone || data.customer_phone || data.phone || data.userPhone || '',
+    customerEmail: data.customerEmail || data.userEmail || '',
+    deliveryAddress: data.deliveryAddress || (typeof data.delivery_address === 'string' ? { addressLine1: data.delivery_address } : data.delivery_address),
+    items: data.items || [],
+    subtotal: Number(data.subtotal || data.totalAmount || data.total_amount || 0),
+    totalAmount: Number(data.totalAmount || data.total_amount || 0),
+    deliveryFee: Number(data.deliveryFee || data.delivery_fee || 0),
+    taxes: Number(data.taxes || data.tax_amount || 0),
+    packagingCharge: Number(data.packagingCharge || 0),
+    discountAmount: Number(data.discountAmount || data.discount_amount || 0),
+    status,
+    fulfillmentType: data.fulfillmentType || data.deliveryType || data.order_type || (data.tableNumber || data.table_number ? 'dine_in' : 'delivery'),
+    deliveryType: data.deliveryType || data.order_type || (data.tableNumber || data.table_number ? 'dine_in' : 'delivery'),
+    paymentStatus: data.paymentStatus || data.payment_status || 'pending',
+    paymentMethod: data.paymentMethod || data.payment_method || 'cash',
+    tableNumber: data.tableNumber || data.table_number,
+    deliveryPartnerId: data.deliveryPartnerId || data.delivery_partner_id,
+    deliveryPartnerName: data.deliveryPartnerName || data.delivery_partner_name,
+    deliveryPartnerPhone: data.deliveryPartnerPhone || data.delivery_partner_phone,
+    deliveryPartnerLocation: data.deliveryPartnerLocation,
+    cancellationReason: data.cancellationReason || data.cancellation_reason,
+    branchId: data.branchId || data.branch_id || fallbackBranchId,
+    acceptedAt: formatIso(data.acceptedAt || data.accepted_at),
+    preparingAt: formatIso(data.preparingAt || data.preparation_started_at),
+    expectedReadyAt: formatIso(data.expectedReadyAt || data.expected_ready_at || data.estimatedReadyAt),
+    estimatedPreparationMinutes: Number(data.estimatedPreparationMinutes || data.estimated_preparation_minutes) || undefined,
+    readyAt: formatIso(data.readyAt || data.ready_at),
+    partnerAssignedAt: formatIso(data.partnerAssignedAt || data.partner_assigned_at || data.riderAssignedAt),
+    pickedUpAt: formatIso(data.pickedUpAt),
+    outForDeliveryAt: formatIso(data.outForDeliveryAt),
+    deliveredAt: formatIso(data.deliveredAt || data.delivered_at),
+    cancelledAt: formatIso(data.cancelledAt || data.cancelled_at),
+    appliedCouponCode: data.appliedCouponCode || data.couponCode || data.coupon_code,
+    createdAt: createdDate,
+    updatedAt: updatedDate,
+  };
 };
 
 export const useManagerStore = create<ManagerState>((set, get) => ({
@@ -439,9 +513,41 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   logout: async () => {
     try {
       SoundAlertEngine.stopAlarm();
-      if (liveOrdersUnsub) liveOrdersUnsub();
-      if (ridersUnsub) ridersUnsub();
+      if (liveOrdersUnsub) { liveOrdersUnsub(); liveOrdersUnsub = null; }
+      if (ridersUnsub) { ridersUnsub(); ridersUnsub = null; }
       if (statusUnsub) { statusUnsub(); statusUnsub = null; }
+      if (livePollInterval) {
+        clearInterval(livePollInterval);
+        livePollInterval = null;
+      }
+
+      // Explicitly deregister FCM token on logout so unauthenticated sessions never receive pushes
+      const token = typeof window !== 'undefined' ? localStorage.getItem('olive_restaurant_fcm_token') : null;
+      if (token) {
+        try {
+          await fetchApi('/api/notifications/token/deregister', {
+            method: 'POST',
+            body: JSON.stringify({ token, reason: 'manager_logout' })
+          });
+        } catch (tokErr) {
+          console.warn('[ManagerStore] FCM token deregister warning:', tokErr);
+        }
+        try {
+          localStorage.removeItem('olive_restaurant_fcm_token');
+        } catch {}
+      }
+
+      // Clear native Capacitor push/auth listeners if present
+      try {
+        const { Capacitor } = await import('@capacitor/core');
+        if (Capacitor.isNativePlatform()) {
+          const { PushNotifications } = await import('@capacitor/push-notifications');
+          await PushNotifications.removeAllListeners().catch(() => {});
+          const { FirebaseAuthentication } = await import('@capacitor-firebase/authentication');
+          await FirebaseAuthentication.signOut().catch(() => {});
+        }
+      } catch {}
+
       await signOut(auth);
       set({ user: null, managerProfile: null, isAuthorized: false, restrictedReason: null, restrictedEmail: null, liveOrders: [] });
     } catch (e) {
@@ -449,11 +555,22 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
     }
   },
 
-  setActiveBranch: (branchId, branchName) => {
-    set({
+  setActiveBranch: (branchId, branchName, franchiseId) => {
+    const isOwner = get().userRole === 'owner' || 
+                    get().userRole === 'platform_owner' ||
+                    get().managerProfile?.email === 'webhub2811@gmail.com' ||
+                    get().managerProfile?.email === 'olivepizzarjn@gmail.com';
+    const resolvedFranchise = franchiseId || 'fra_rajnandgaon';
+    set((state) => ({
       activeBranchId: branchId,
-      activeBranchName: branchName || (branchId ? `Branch ${branchId}` : '')
-    });
+      activeBranchName: branchName || (branchId ? `Branch ${branchId}` : ''),
+      managerProfile: state.managerProfile ? {
+        ...state.managerProfile,
+        branchId,
+        branchName: branchName || state.managerProfile.branchName,
+        franchiseId: isOwner ? resolvedFranchise : state.managerProfile.franchiseId
+      } : null
+    }));
     get().subscribeToLiveOrders(branchId);
     get().subscribeToRiders(branchId);
     get().subscribeToRestaurantStatus(branchId);
@@ -461,87 +578,17 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
   },
 
   subscribeToLiveOrders: (branchId) => {
-    if (liveOrdersUnsub) liveOrdersUnsub();
+    if (liveOrdersUnsub) { liveOrdersUnsub(); liveOrdersUnsub = null; }
+    if (livePollInterval) {
+      clearInterval(livePollInterval);
+      livePollInterval = null;
+    }
     set({ isOrdersLoading: true });
 
-    let livePollInterval: ReturnType<typeof setInterval> | null = null;
     let isDisposed = false;
     let isFirstLoad = true;
     let snapshotMap = new Map<string, Order>();
     let apiMap = new Map<string, Order>();
-
-    const isSyntheticOrder = (id: string, data: any) => (
-      id.startsWith('test_') ||
-      id.startsWith('mock_') ||
-      id.startsWith('synthetic_') ||
-      id.startsWith('dummy_') ||
-      id.startsWith('online_test_') ||
-      id.startsWith('ord_test_') ||
-      (data?.customerName && /^(test|mock|synthetic|dummy|fake|archival test|idempotency test)/i.test(data.customerName)) ||
-      (data?.orderNumber && /test/i.test(String(data.orderNumber))) ||
-      (data?.orderSource && /test|mock/i.test(String(data.orderSource))) ||
-      data?.isTest === true
-    );
-
-    const parseDateVal = (val: any, fallback: Date): Date => {
-      if (!val) return fallback;
-      if (val instanceof Date) return val;
-      if (typeof val.toDate === 'function') return val.toDate();
-      if (val instanceof Timestamp) return val.toDate();
-      if (typeof val._seconds === 'number') return new Date(val._seconds * 1000);
-      if (typeof val.seconds === 'number') return new Date(val.seconds * 1000);
-      const parsed = new Date(val);
-      return isNaN(parsed.getTime()) ? fallback : parsed;
-    };
-
-    const normalizeOrder = (id: string, data: any, fallbackBranchId: string): Order => {
-      const status = (data.status || data.order_status || 'pending').toLowerCase() as OrderStatus;
-      const createdDate = parseDateVal(data.createdAt || data.created_at, new Date());
-      const updatedDate = parseDateVal(data.updatedAt || data.updated_at, createdDate);
-      return {
-        id,
-        orderNumber: data.dailyOrderNumber ? `#${data.dailyOrderNumber}` : (data.orderNumber || `#${id.slice(0, 6).toUpperCase()}`),
-        dailyOrderNumber: data.dailyOrderNumber,
-        userId: data.userId,
-        customerId: data.customerId || data.userId,
-        customerName: data.customerName || data.userName || data.deliveryAddress?.customerName || 'Walk-in Customer',
-        contactPhone: data.contactPhone || data.phone || data.userPhone || '',
-        customerEmail: data.customerEmail || data.userEmail || '',
-        deliveryAddress: data.deliveryAddress,
-        items: data.items || [],
-        subtotal: Number(data.subtotal || data.totalAmount || 0),
-        totalAmount: Number(data.totalAmount || 0),
-        deliveryFee: Number(data.deliveryFee || 0),
-        taxes: Number(data.taxes || 0),
-        packagingCharge: Number(data.packagingCharge || 0),
-        discountAmount: Number(data.discountAmount || 0),
-        status,
-        fulfillmentType: data.fulfillmentType || data.deliveryType || (data.tableNumber ? 'dine_in' : 'delivery'),
-        deliveryType: data.deliveryType || (data.tableNumber ? 'dine_in' : 'delivery'),
-        paymentStatus: data.paymentStatus || 'pending',
-        paymentMethod: data.paymentMethod || 'cash',
-        tableNumber: data.tableNumber,
-        deliveryPartnerId: data.deliveryPartnerId,
-        deliveryPartnerName: data.deliveryPartnerName,
-        deliveryPartnerPhone: data.deliveryPartnerPhone,
-        deliveryPartnerLocation: data.deliveryPartnerLocation,
-        cancellationReason: data.cancellationReason,
-        branchId: data.branchId || fallbackBranchId,
-        acceptedAt: formatIso(data.acceptedAt),
-        preparingAt: formatIso(data.preparingAt),
-        expectedReadyAt: formatIso(data.expectedReadyAt || data.estimatedReadyAt),
-        estimatedPreparationMinutes: Number(data.estimatedPreparationMinutes) || undefined,
-        readyAt: formatIso(data.readyAt),
-        partnerAssignedAt: formatIso(data.partnerAssignedAt || data.riderAssignedAt),
-        pickedUpAt: formatIso(data.pickedUpAt),
-        outForDeliveryAt: formatIso(data.outForDeliveryAt),
-        deliveredAt: formatIso(data.deliveredAt),
-        cancelledAt: formatIso(data.cancelledAt),
-        appliedCouponCode: data.appliedCouponCode || data.couponCode,
-        createdAt: createdDate,
-        updatedAt: updatedDate,
-      };
-    };
 
     const targetBranchId = (!branchId || branchId === 'all')
       ? (get().managerProfile?.branchId || '')
@@ -581,12 +628,12 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
       const isAlarmEnabled = deviceAlarmService.isAlarmEnabled();
 
       if (isFirstLoad) {
-        pendingOrders.forEach((o) => NotificationDeduplicator.record(`ORDER_NEW_ALERT:${o.id}`));
+        pendingOrders.forEach((o) => NotificationDeduplicator.record(`ORDER_ALERT:${o.id}`));
         isFirstLoad = false;
       } else {
         let hasNewPendingOrder = false;
         for (const o of pendingOrders) {
-          if (NotificationDeduplicator.shouldProcess(`ORDER_NEW_ALERT:${o.id}`)) {
+          if (!NotificationDeduplicator.isOrderSilenced(o.id) && NotificationDeduplicator.shouldProcess(`ORDER_ALERT:${o.id}`)) {
             hasNewPendingOrder = true;
           }
         }
@@ -595,7 +642,11 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         }
       }
 
-      if (pendingOrders.length === 0 || !isRestaurantOpen || !isAlarmEnabled) {
+      const activeUnsilencedPending = pendingOrders.filter(
+        (o) => !NotificationDeduplicator.isOrderSilenced(o.id)
+      );
+
+      if (activeUnsilencedPending.length === 0 || !isRestaurantOpen || !isAlarmEnabled) {
         SoundAlertEngine.stopAlarm();
       }
     };
@@ -686,12 +737,39 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         livePollInterval = null;
       }
       SoundAlertEngine.stopAlarm();
-      if (liveOrdersUnsub) liveOrdersUnsub();
+      if (liveOrdersUnsub) {
+        liveOrdersUnsub();
+        liveOrdersUnsub = null;
+      }
     };
   },
 
   fetchHistoricalOrders: async () => {
     const branchId = get().activeBranchId;
+    const currentProfile = get().managerProfile;
+    const profileFranchiseId = currentProfile?.franchiseId;
+    const normF = (id?: string) => (id || '').trim().toLowerCase().replace(/^fra_/, '');
+    const pastMap = new Map<string, Order>();
+
+    // 1. Authoritative Backend API (PostgreSQL canonical_orders)
+    try {
+      const res = await fetchApi<any>(`/api/orders?branchId=${encodeURIComponent(branchId || 'all')}&limit=100`);
+      const rawList = Array.isArray(res) ? res : (res?.orders || res?.data || []);
+      if (Array.isArray(rawList)) {
+        for (const raw of rawList) {
+          const oid = raw?.id || raw?.orderId;
+          if (!oid || isSyntheticOrder(oid, raw)) continue;
+          if (profileFranchiseId && raw.franchiseId && normF(raw.franchiseId) !== normF(profileFranchiseId) && profileFranchiseId !== 'all') {
+            continue;
+          }
+          pastMap.set(oid, normalizeOrder(oid, raw, branchId));
+        }
+      }
+    } catch (apiErr) {
+      console.warn('[ManagerStore] Backend API historical orders notice:', apiErr);
+    }
+
+    // 2. Firestore Sync (gracefully skip if quota or network issue)
     try {
       const q = query(
         collection(db, 'orders'),
@@ -699,68 +777,28 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
         limit(150)
       );
       const snap = await getDocs(q);
-      const currentProfile = get().managerProfile;
-      const profileFranchiseId = currentProfile?.franchiseId;
-      const pastList: Order[] = [];
-
       snap.forEach((docSnap) => {
         const data = docSnap.data();
-        const status = (data.status || 'pending').toLowerCase() as OrderStatus;
-        const orderBranch = data.branchId || '';
+        if (isSyntheticOrder(docSnap.id, data)) return;
         const orderFranchise = data.franchiseId;
-
-        // Strict Franchise Isolation: If order specifies a franchiseId and it doesn't match manager's franchiseId, ignore
-        if (profileFranchiseId && orderFranchise && orderFranchise !== profileFranchiseId) {
+        if (profileFranchiseId && orderFranchise && normF(orderFranchise) !== normF(profileFranchiseId) && profileFranchiseId !== 'all') {
           return;
         }
-
+        const orderBranch = data.branchId || '';
         if (orderBranch === branchId || branchId === 'all') {
-          pastList.push({
-            id: docSnap.id,
-            orderNumber: data.orderNumber || `#${docSnap.id.slice(0, 6).toUpperCase()}`,
-            dailyOrderNumber: data.dailyOrderNumber,
-            userId: data.userId,
-            customerName: data.customerName || data.userName || data.deliveryAddress?.customerName || 'Customer',
-            contactPhone: data.contactPhone || data.phone || '',
-            customerEmail: data.customerEmail || data.userEmail || '',
-            deliveryAddress: data.deliveryAddress,
-            items: data.items || [],
-            totalAmount: Number(data.totalAmount || 0),
-            deliveryFee: Number(data.deliveryFee || 0),
-            taxes: Number(data.taxes || 0),
-            packagingCharge: Number(data.packagingCharge || 0),
-            discountAmount: Number(data.discountAmount || 0),
-            status,
-            fulfillmentType: data.fulfillmentType || data.deliveryType || 'delivery',
-            orderSource: data.orderSource || 'website',
-            paymentStatus: data.paymentStatus || 'pending',
-            paymentMethod: data.paymentMethod || 'online',
-            deliveryPartnerId: data.deliveryPartnerId,
-            deliveryPartnerName: data.deliveryPartnerName,
-            cancellationReason: data.cancellationReason,
-            branchId: orderBranch,
-            acceptedAt: formatIso(data.acceptedAt),
-            preparingAt: formatIso(data.preparingAt),
-            expectedReadyAt: formatIso(data.expectedReadyAt || data.estimatedReadyAt),
-            estimatedPreparationMinutes: Number(data.estimatedPreparationMinutes) || undefined,
-            readyAt: formatIso(data.readyAt),
-            partnerAssignedAt: formatIso(data.partnerAssignedAt || data.riderAssignedAt),
-            pickedUpAt: formatIso(data.pickedUpAt),
-            outForDeliveryAt: formatIso(data.outForDeliveryAt),
-            deliveredAt: formatIso(data.deliveredAt),
-            cancelledAt: formatIso(data.cancelledAt),
-            appliedCouponCode: data.appliedCouponCode || data.couponCode,
-            createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt || Date.now()),
-            updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt || Date.now()),
-          });
+          if (!pastMap.has(docSnap.id)) {
+            pastMap.set(docSnap.id, normalizeOrder(docSnap.id, data, branchId));
+          }
         }
       });
-
-      set({ historicalOrders: pastList });
-      RestaurantIndexedDbService.cacheOrders(pastList).catch(() => {});
     } catch (err) {
-      console.error('[ManagerStore] Error fetching historical orders:', err);
+      console.warn('[ManagerStore] Firestore historical orders query notice (falling back to authoritative store):', err);
     }
+
+    const pastList = Array.from(pastMap.values());
+    pastList.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    set({ historicalOrders: pastList });
+    RestaurantIndexedDbService.cacheOrders(pastList).catch(() => {});
   },
 
   updateOrderStatus: async (orderId, nextStatus, reason, estimatedPreparationMinutes) => {
@@ -1388,3 +1426,7 @@ export const useManagerStore = create<ManagerState>((set, get) => ({
     };
   }
 }));
+
+if (typeof window !== 'undefined') {
+  (window as any).__managerStore = useManagerStore;
+}

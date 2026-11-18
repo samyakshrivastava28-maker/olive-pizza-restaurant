@@ -146,6 +146,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "1017239455106-co63s09itg6sc2u2vt6a6vsqt6vforh1.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "in.olivepizza.manager",
+            "certificate_hash": "aab557d95a75e13d977b5c9c67f46c692f71cab1"
+          }
+        },
+        {
           "client_id": "1017239455106-qsrk7bc6slvgpjafb946dafaqa4rbehj.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

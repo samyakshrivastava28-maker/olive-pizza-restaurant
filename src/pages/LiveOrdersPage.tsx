@@ -25,6 +25,7 @@ import { useManagerStore } from '../store/managerStore';
 import { useLiveRiderStore } from '../store/liveRiderStore';
 import { FleetLiveMap } from '../components/delivery/FleetLiveMap';
 import type { Order, OrderStatus } from '../types/restaurant';
+import { SoundAlertEngine } from '../lib/SoundAlertEngine';
 import { format, formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
 
@@ -69,7 +70,7 @@ export const LiveOrdersPage: React.FC = () => {
     isSupabaseLive
   } = useLiveRiderStore();
 
-  const activeBranchId = useManagerStore((s) => s.activeBranchId || 'main_branch');
+  const activeBranchId = useManagerStore((s) => s.activeBranchId || 'branch_rjn_main');
 
   useEffect(() => {
     const unsub = subscribeFleet(activeBranchId);
@@ -84,6 +85,36 @@ export const LiveOrdersPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedOrderDetails, setSelectedOrderDetails] = useState<Order | null>(null);
   const [prepTimes, setPrepTimes] = useState<Record<string, number>>({});
+  const alertedPrepEndRef = React.useRef<Set<string>>(new Set());
+
+  // Kitchen Preparation Timer Expiration Watcher
+  useEffect(() => {
+    const checkTimer = () => {
+      const now = Date.now();
+      liveOrders.forEach((order) => {
+        if ((order.status === 'preparing' || order.status === 'accepted') && !alertedPrepEndRef.current.has(order.id)) {
+          const prepStart = order.preparingAt || order.acceptedAt;
+          const prepMins = order.estimatedPreparationMinutes || 15;
+          if (prepStart) {
+            const startTime = new Date(prepStart).getTime();
+            const finishTime = startTime + prepMins * 60 * 1000;
+            // If timer finished within the last 5 minutes
+            if (now >= finishTime && (now - finishTime < 5 * 60 * 1000)) {
+              alertedPrepEndRef.current.add(order.id);
+              SoundAlertEngine.playSound('prep_timer_ended');
+              toast(`🔔 Kitchen Prep Timer ended for #${order.dailyOrderNumber || order.orderNumber || order.id.slice(-6).toUpperCase()}! Move to Ready.`, {
+                icon: '🍕',
+                duration: 6000
+              });
+            }
+          }
+        }
+      });
+    };
+
+    const interval = setInterval(checkTimer, 5000);
+    return () => clearInterval(interval);
+  }, [liveOrders]);
 
   // Auto-focus and open order modal if navigated via notification tap (?orderId=...)
   useEffect(() => {
@@ -130,6 +161,17 @@ export const LiveOrdersPage: React.FC = () => {
   const handleStatusChange = async (orderId: string, nextStatus: OrderStatus, reason?: string, estimatedPrepMinutes?: number) => {
     const res = await updateOrderStatus(orderId, nextStatus, reason, estimatedPrepMinutes);
     if (res && res.success) {
+      if (nextStatus === 'delivered') {
+        SoundAlertEngine.playSound('order_delivered');
+      } else if (nextStatus === 'ready') {
+        SoundAlertEngine.playSound('order_ready');
+      } else if (nextStatus === 'preparing') {
+        SoundAlertEngine.playSound('order_accepted');
+      } else if (nextStatus === 'cancelled' || nextStatus === 'rejected') {
+        SoundAlertEngine.playSound('order_cancelled');
+      } else {
+        SoundAlertEngine.playSound('status_changed');
+      }
       toast.success(`Order moved to ${nextStatus.toUpperCase().replace(/_/g, ' ')}`);
       if (selectedOrderDetails?.id === orderId) {
         setSelectedOrderDetails(null);
@@ -143,6 +185,7 @@ export const LiveOrdersPage: React.FC = () => {
     if (!rejectOrderId) return;
     const res = await updateOrderStatus(rejectOrderId, 'cancelled', rejectReason.trim() || 'Rejected by restaurant manager');
     if (res && res.success) {
+      SoundAlertEngine.playSound('order_cancelled');
       toast.success('Order cancelled/rejected');
       setRejectOrderId(null);
       setRejectReason('');

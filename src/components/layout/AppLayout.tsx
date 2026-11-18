@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, Navigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
@@ -10,8 +10,28 @@ import PushNotificationManager from '../../services/PushNotificationManager';
 import { PersistentActiveOrderSheet } from '../orders/PersistentActiveOrderSheet';
 
 export const AppLayout: React.FC = () => {
-  const { user, isAuthChecking, isAuthorized, isDatabaseUnavailable, restrictedReason } = useManagerStore();
+  const { 
+    user, 
+    isAuthChecking, 
+    isAuthorized, 
+    isDatabaseUnavailable, 
+    restrictedReason,
+    activeBranchId,
+    subscribeToLiveOrders,
+    subscribeToRestaurantStatus
+  } = useManagerStore();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    if (!user || !isAuthorized) return;
+    const branch = activeBranchId || 'branch_rjn_main';
+    const unsubOrders = subscribeToLiveOrders(branch);
+    const unsubStatus = subscribeToRestaurantStatus(branch);
+    return () => {
+      unsubOrders();
+      unsubStatus();
+    };
+  }, [user, isAuthorized, activeBranchId, subscribeToLiveOrders, subscribeToRestaurantStatus]);
 
   if (isAuthChecking) {
     return (

@@ -50,6 +50,22 @@ public class RestaurantMessagingService extends MessagingService {
                 if (!data.containsKey("body") && notif.getBody() != null) data.put("body", notif.getBody());
             }
 
+            String targetApp = data.get("targetApp");
+            // Strict isolation: Drop customer, delivery, or other client app notifications immediately
+            if ("customer".equalsIgnoreCase(targetApp) || "delivery".equalsIgnoreCase(targetApp)) {
+                Log.w(TAG, "Dropping push notification targeted for " + targetApp + " in Restaurant Management app.");
+                return;
+            }
+
+            // Drop customer tracking notifications (e.g. Delivered, Out for delivery)
+            String rawTitle = data.get("title");
+            String rawBody = data.get("body");
+            if ((rawTitle != null && (rawTitle.contains("Enjoy your") || rawTitle.contains("Delivered!"))) ||
+                (rawBody != null && (rawBody.contains("hot pizza") || rawBody.contains("delivered")))) {
+                Log.w(TAG, "Dropping customer tracking push in Restaurant Management app.");
+                return;
+            }
+
             String eventType = data.get("eventType");
             String type = data.get("type");
             String stage = data.get("stage");
@@ -60,14 +76,10 @@ public class RestaurantMessagingService extends MessagingService {
                                  "new_order".equalsIgnoreCase(stage) ||
                                  "alarm_actionable".equalsIgnoreCase(data.get("category"));
 
+            // Require manager to be actively authenticated/signed in
             FirebaseUser signedInManager = FirebaseAuth.getInstance().getCurrentUser();
-            String recipientUid = data.get("recipientUid");
-            if (recipientUid != null && (signedInManager == null || !signedInManager.getUid().equals(recipientUid))) {
-                Log.w(TAG, "Ignoring operational push because the current authenticated manager does not match the recipient UID.");
-                return;
-            }
-            if (isNewOrder && (signedInManager == null || recipientUid == null || !signedInManager.getUid().equals(recipientUid))) {
-                Log.w(TAG, "Ignoring new-order alert without the matching authenticated recipient UID.");
+            if (signedInManager == null) {
+                Log.w(TAG, "Dropping notification: No manager is signed in. Restaurant alerts require active sign-in.");
                 return;
             }
 
@@ -83,10 +95,16 @@ public class RestaurantMessagingService extends MessagingService {
                     if (nm != null) nm.cancel(orderId.hashCode());
                 }
             } else if (isNewOrder) {
+                String recipientUid = data.get("recipientUid");
+                if (recipientUid != null && !signedInManager.getUid().equals(recipientUid)) {
+                    Log.w(TAG, "Ignoring new-order alert for different recipient UID: " + recipientUid);
+                    return;
+                }
                 wakeScreen(powerManager);
                 showUrgentAlertNotification(data);
             } else {
-                showStandardNotification(data);
+                // Restaurant app ONLY alerts for NEW_ORDER. Drop all other statuses to prevent duplicate/customer notifications.
+                Log.d(TAG, "Dropping non-new-order notification in Restaurant Management app: " + type);
             }
         } catch (Exception e) {
             Log.e(TAG, "Error processing incoming FCM message:", e);

@@ -12,6 +12,8 @@
 
 import { Order } from '../types/restaurant';
 import { OfflineActionRecord } from './RestaurantIndexedDbService';
+import { getApiUrl } from '../lib/api';
+import { getCurrentAuthToken } from '../lib/firebase';
 
 export interface CsvExportResult {
   filename: string;
@@ -383,8 +385,6 @@ export class RestaurantCsvExportService {
     branchId?: string;
   }): Promise<{ success: boolean; rowCount?: number; filename?: string }> {
     const { endpoint, fallbackFilename } = params;
-    const { getApiUrl } = await import('../lib/api');
-    const { getCurrentAuthToken } = await import('../lib/firebase');
 
     const token = await getCurrentAuthToken();
     const targetUrl = getApiUrl(endpoint);

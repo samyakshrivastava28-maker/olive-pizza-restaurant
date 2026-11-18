@@ -37,11 +37,20 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     return deviceAlarmService.subscribe((enabled) => setAlarmEnabled(enabled));
   }, []);
 
-  const branches = managerProfile?.branchId ? [
-    { id: managerProfile.branchId, name: managerProfile.branchName || activeBranchName || 'Assigned Branch' },
-  ] : (activeBranchId ? [{ id: activeBranchId, name: activeBranchName || 'Assigned Branch' }] : []);
+  const isGlobalOwner = userRole === 'owner' || 
+                        userRole === 'platform_owner' || 
+                        managerProfile?.email === 'webhub2811@gmail.com' || 
+                        managerProfile?.email === 'olivepizzarjn@gmail.com';
 
-  const isGlobalOwner = userRole === 'owner' || userRole === 'platform_owner';
+  const ALL_FRANCHISE_BRANCHES = [
+    { id: 'branch_rjn_main', name: 'Olive Pizza — Rajnandgaon HQ', franchiseId: 'fra_rajnandgaon' }
+  ];
+
+  const branches = isGlobalOwner 
+    ? ALL_FRANCHISE_BRANCHES 
+    : (managerProfile?.branchId ? [
+        { id: managerProfile.branchId, name: managerProfile.branchName || activeBranchName || 'Assigned Branch', franchiseId: managerProfile.franchiseId || 'fra_rajnandgaon' },
+      ] : (activeBranchId ? [{ id: activeBranchId, name: activeBranchName || 'Assigned Branch', franchiseId: 'fra_rajnandgaon' }] : []));
 
   return (
     <header className="sticky top-0 z-30 bg-[#0d120f]/90 backdrop-blur-md border-b border-[#26332a] px-4 sm:px-6 py-3.5 flex items-center justify-between">
@@ -62,10 +71,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                 <ShieldCheck className="w-3.5 h-3.5 text-[#c6a052] shrink-0" />
                 <span className="text-[11px] font-bold text-[#c6a052] hidden sm:inline">Current Restaurant:</span>
                 <select
+                  id="restaurant-branch-select"
+                  data-testid="restaurant-branch-select"
                   value={activeBranchId}
                   onChange={(e) => {
                     const b = branches.find(br => br.id === e.target.value);
-                    setActiveBranch(e.target.value, b?.name);
+                    setActiveBranch(e.target.value, b?.name, (b as any)?.franchiseId);
                   }}
                   className="bg-transparent text-white font-bold focus:outline-none cursor-pointer pr-1"
                 >
