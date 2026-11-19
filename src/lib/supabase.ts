@@ -1,11 +1,14 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 /**
- * 🛰️ Olive Pizza Restaurant Management - Dedicated Supabase Realtime Client
+ * 🛰️ Olive Pizza Restaurant Management - Supabase Client
  * 
- * STRICT ARCHITECTURAL INVARIANT (Sections 10, 17, 18, 19):
- * Subscribes directly to Supabase Realtime delivery_locations for live fleet monitoring.
- * Consumed by the Shared Live Rider Store across Dashboard, Live Orders, and Rider Management.
+ * ARCHITECTURAL MIGRATION (R2, R3):
+ * Direct Supabase Realtime table queries and subscriptions on `delivery_locations` have been
+ * eliminated per R2. Live fleet monitoring is now streamed via the canonical backend
+ * WebSocket server (`/ws`) and Redis ephemeral tracking with HTTP polling fallback.
+ * 
+ * This client is preserved for non-fleet legacy touchpoint compatibility without breaking dependencies.
  */
 
 const DEFAULT_SUPABASE_URL = 'https://tdjrkqmhdynbaciguyvr.supabase.co';

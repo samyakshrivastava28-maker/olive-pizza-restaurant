@@ -275,7 +275,7 @@ export const LiveOrdersPage: React.FC = () => {
               <h2 className="text-sm font-bold text-white">Live Fleet Telemetry & Order Tracking</h2>
               {isSupabaseLive && (
                 <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                  <Radio className="w-2.5 h-2.5 animate-pulse" /> LIVE SUPABASE STREAM
+                  <Radio className="w-2.5 h-2.5 animate-pulse" /> LIVE FLEET STREAM
                 </span>
               )}
             </div>

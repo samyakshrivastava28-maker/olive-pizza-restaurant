@@ -4,13 +4,15 @@ import { getFirestore } from 'firebase/firestore';
 
 export { signInWithCustomToken };
 
+const env = (typeof import.meta !== 'undefined' && (import.meta as any)?.env) || {};
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAqkcY-WQrW3WoZWRrv8oo7MTAI_nVrLw4",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "olive-pizza-08.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "olive-pizza-08",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "olive-pizza-08.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "1017239455106",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:1017239455106:web:a7cb9bb285e68e38007b9b"
+  apiKey: env.VITE_FIREBASE_API_KEY || "AIzaSyAqkcY-WQrW3WoZWRrv8oo7MTAI_nVrLw4",
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || "olive-pizza-08.firebaseapp.com",
+  projectId: env.VITE_FIREBASE_PROJECT_ID || "olive-pizza-08",
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || "olive-pizza-08.firebasestorage.app",
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || "1017239455106",
+  appId: env.VITE_FIREBASE_APP_ID || "1:1017239455106:web:a7cb9bb285e68e38007b9b"
 };
 
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);

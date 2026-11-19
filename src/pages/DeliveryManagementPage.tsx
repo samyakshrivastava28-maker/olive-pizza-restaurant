@@ -111,7 +111,7 @@ export const DeliveryManagementPage: React.FC = () => {
               <Navigation className="w-4 h-4 text-[#c6a052]" /> Fleet Radar Map
             </h2>
             <span className="text-[11px] text-[#7ba372] flex items-center gap-1.5 font-mono">
-              <Radio className={`w-3.5 h-3.5 ${isSupabaseLive ? 'text-[#10b981] animate-pulse' : 'text-amber-500'}`} /> {isSupabaseLive ? 'Live Supabase Telemetry' : 'Connecting Telemetry...'}
+              <Radio className={`w-3.5 h-3.5 ${isSupabaseLive ? 'text-[#10b981] animate-pulse' : 'text-amber-500'}`} /> {isSupabaseLive ? 'Live Fleet Telemetry' : 'Connecting Telemetry...'}
             </span>
           </div>
 

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import { supabase } from '../lib/supabase';
 import { collection, onSnapshot, query, where, type Unsubscribe } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, getCurrentAuthToken } from '../lib/firebase';
+import { getWebSocketUrl, fetchApi } from '../lib/api';
 import type { DeliveryPartner } from '../types/restaurant';
 
 export interface LiveRiderFleetState {
@@ -9,7 +9,8 @@ export interface LiveRiderFleetState {
   selectedRider: DeliveryPartner | null;
   isLoading: boolean;
   activeBranchId: string;
-  isSupabaseLive: boolean;
+  isSupabaseLive: boolean; // Retained for backwards compatibility (signals active live telemetry)
+  isTelemetryLive: boolean;
   
   // Fleet Counts
   onlineCount: number;
@@ -25,7 +26,10 @@ export interface LiveRiderFleetState {
 // Module-level singletons for subscription management (prevents duplicate WebSockets across Dashboard / Live Orders / Riders)
 let refCount = 0;
 let currentBranchId = '';
-let supabaseChannel: any = null;
+let telemetryWs: WebSocket | null = null;
+let wsReconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+let pollingIntervalTimer: ReturnType<typeof setInterval> | null = null;
+let isDisposed = false;
 let firestoreUnsubDP: Unsubscribe | null = null;
 let firestoreUnsubUsers: Unsubscribe | null = null;
 
@@ -42,12 +46,69 @@ let latestGpsMap = new Map<string, {
   lastUpdated: string;
 }>();
 
+function processTelemetryRecord(row: any) {
+  if (!row) return;
+  const partnerId = row.deliveryPartnerId || row.delivery_partner_id || row.partnerId || row.id || row.uid;
+  if (!partnerId) return;
+
+  const lat = row.lat !== undefined ? row.lat : (row.latitude !== undefined ? row.latitude : null);
+  const lng = row.lng !== undefined ? row.lng : (row.longitude !== undefined ? row.longitude : null);
+
+  if (lat != null && lng != null && !isNaN(Number(lat)) && !isNaN(Number(lng))) {
+    latestGpsMap.set(partnerId, {
+      lat: Number(lat),
+      lng: Number(lng),
+      speed: Number(row.speed || 0),
+      heading: Number(row.heading ?? row.bearing ?? 0),
+      accuracy: Number(row.accuracy || 5),
+      onlineStatus: row.status !== 'OFFLINE' && row.onlineStatus !== false && row.online_status !== false,
+      activeOrderId: row.orderId || row.activeOrderId || row.active_order_id || null,
+      lastUpdated: row.timestamp || row.last_updated || row.updated_at || new Date().toISOString()
+    });
+  } else if (row.status === 'OFFLINE' || row.onlineStatus === false || row.online_status === false) {
+    const existing = latestGpsMap.get(partnerId);
+    if (existing) {
+      latestGpsMap.set(partnerId, { ...existing, onlineStatus: false });
+    }
+  }
+}
+
+async function pollActiveDriversFallback(branchId?: string): Promise<boolean> {
+  try {
+    const query = branchId && branchId !== 'all' ? `?branchId=${encodeURIComponent(branchId)}` : '';
+    const res = await fetchApi<any>(`/api/tracking/active-drivers${query}`);
+    let records: any[] = [];
+    if (res && res.success && Array.isArray(res.data)) {
+      records = res.data;
+    } else {
+      const altRes = await fetchApi<any>(`/api/tracking/locations/active${query}`);
+      if (altRes && (Array.isArray(altRes) || Array.isArray(altRes.data))) {
+        records = Array.isArray(altRes) ? altRes : altRes.data;
+      } else {
+        const ridersRes = await fetchApi<any>(`/api/tracking/riders${query}`);
+        if (ridersRes && (Array.isArray(ridersRes) || Array.isArray(ridersRes.data))) {
+          records = Array.isArray(ridersRes) ? ridersRes : ridersRes.data;
+        }
+      }
+    }
+
+    if (records.length > 0) {
+      records.forEach(processTelemetryRecord);
+      return true;
+    }
+    return false;
+  } catch (err: any) {
+    return false;
+  }
+}
+
 export const useLiveRiderStore = create<LiveRiderFleetState>((set, get) => ({
   riders: [],
   selectedRider: null,
   isLoading: true,
   activeBranchId: '',
   isSupabaseLive: false,
+  isTelemetryLive: false,
   onlineCount: 0,
   availableCount: 0,
   onDeliveryCount: 0,
@@ -59,6 +120,7 @@ export const useLiveRiderStore = create<LiveRiderFleetState>((set, get) => ({
 
   subscribeFleet: (branchId: string) => {
     refCount++;
+    isDisposed = false;
     set({ activeBranchId: branchId });
 
     // Helper to recompute merged list and stats
@@ -112,79 +174,138 @@ export const useLiveRiderStore = create<LiveRiderFleetState>((set, get) => ({
       });
     };
 
-    // If already subscribed to the same branch, just return unbind
-    if (supabaseChannel && currentBranchId === branchId) {
+    // If already subscribed to the same branch and WebSocket is connected, just return unbind
+    if (telemetryWs && telemetryWs.readyState === WebSocket.OPEN && currentBranchId === branchId) {
       syncState();
       return () => {
         refCount = Math.max(0, refCount - 1);
-        if (refCount === 0) cleanupSubscriptions();
+        if (refCount === 0) cleanupSubscriptions(set);
       };
     }
 
     currentBranchId = branchId;
-    cleanupSubscriptions();
+    cleanupSubscriptions(set);
+    isDisposed = false;
 
-    // 1. Initial snapshot from Supabase delivery_locations
-    if (supabase) {
-      Promise.resolve(supabase.from('delivery_locations').select('*'))
-        .then(({ data, error }: any) => {
-          if (!error && data) {
-            data.forEach((row: any) => {
-              if (row.delivery_partner_id && row.latitude != null && row.longitude != null) {
-                latestGpsMap.set(row.delivery_partner_id, {
-                  lat: Number(row.latitude),
-                  lng: Number(row.longitude),
-                  speed: Number(row.speed || 0),
-                  heading: Number(row.heading || 0),
-                  accuracy: Number(row.accuracy || 5),
-                  onlineStatus: row.online_status !== false,
-                  activeOrderId: row.active_order_id || null,
-                  lastUpdated: row.last_updated || new Date().toISOString()
-                });
-              }
-            });
-            set({ isSupabaseLive: true });
-            syncState();
+    // 1. Initial snapshot from backend telemetry route (/api/tracking/active-drivers or /locations/active)
+    pollActiveDriversFallback(branchId).then((hasData) => {
+      if (hasData) {
+        set({ isSupabaseLive: true, isTelemetryLive: true });
+      }
+      syncState();
+    });
+
+    // 2. Realtime WebSocket subscription to canonical Backend WebSocket server
+    const connectWs = () => {
+      if (isDisposed) return;
+      try {
+        const wsUrl = `${getWebSocketUrl()}?branchId=${encodeURIComponent(branchId)}`;
+        const ws = new WebSocket(wsUrl);
+        telemetryWs = ws;
+
+        ws.onopen = async () => {
+          if (isDisposed) {
+            ws.close();
+            return;
           }
-        })
-        .catch(() => {});
+          set({ isSupabaseLive: true, isTelemetryLive: true });
 
-      // 2. Realtime WebSocket subscription to Supabase delivery_locations
-      supabaseChannel = supabase
-        .channel('restaurant-live-fleet-radar')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'delivery_locations' },
-          (payload) => {
-            const row = (payload.new || {}) as any;
-            if (!row || !row.delivery_partner_id) return;
-            
-            if (row.latitude != null && row.longitude != null) {
-              latestGpsMap.set(row.delivery_partner_id, {
-                lat: Number(row.latitude),
-                lng: Number(row.longitude),
-                speed: Number(row.speed || 0),
-                heading: Number(row.heading || 0),
-                accuracy: Number(row.accuracy || 5),
-                onlineStatus: row.online_status !== false,
-                activeOrderId: row.active_order_id || null,
-                lastUpdated: row.last_updated || new Date().toISOString()
-              });
-            } else if (row.online_status === false) {
-              const existing = latestGpsMap.get(row.delivery_partner_id);
-              if (existing) {
-                latestGpsMap.set(row.delivery_partner_id, { ...existing, onlineStatus: false });
-              }
+          try {
+            ws.send(JSON.stringify({
+              type: 'register_branch',
+              branchId
+            }));
+
+            const token = await getCurrentAuthToken();
+            if (token && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({
+                type: 'auth',
+                token,
+                branchId
+              }));
             }
+          } catch {}
+
+          pollActiveDriversFallback(branchId).then(() => syncState());
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (!msg) return;
+
+            if (
+              msg.type === 'driver.location_update' ||
+              msg.type === 'fleet_location_update' ||
+              msg.type === 'driver_location'
+            ) {
+              const data = msg.data || msg.payload;
+              if (Array.isArray(data)) {
+                data.forEach(processTelemetryRecord);
+              } else if (data) {
+                processTelemetryRecord(data);
+              }
+              set({ isSupabaseLive: true, isTelemetryLive: true });
+              syncState();
+            } else if (msg.type === 'active_drivers_snapshot' && Array.isArray(msg.data)) {
+              msg.data.forEach(processTelemetryRecord);
+              set({ isSupabaseLive: true, isTelemetryLive: true });
+              syncState();
+            }
+          } catch {}
+        };
+
+        ws.onerror = () => {
+          // If WS encounters error, trigger fallback polling
+          pollActiveDriversFallback(branchId).then((ok) => {
+            if (ok) syncState();
+          });
+        };
+
+        ws.onclose = () => {
+          telemetryWs = null;
+          if (!isDisposed) {
+            pollActiveDriversFallback(branchId).then((ok) => {
+              if (ok) syncState();
+            });
+            if (wsReconnectTimeout) clearTimeout(wsReconnectTimeout);
+            wsReconnectTimeout = setTimeout(connectWs, 5000);
+            if (typeof (wsReconnectTimeout as any)?.unref === 'function') {
+              (wsReconnectTimeout as any).unref();
+            }
+          }
+        };
+      } catch (err) {
+        if (!isDisposed) {
+          if (wsReconnectTimeout) clearTimeout(wsReconnectTimeout);
+          wsReconnectTimeout = setTimeout(connectWs, 5000);
+          if (typeof (wsReconnectTimeout as any)?.unref === 'function') {
+            (wsReconnectTimeout as any).unref();
+          }
+        }
+      }
+    };
+
+    connectWs();
+
+    // 3. Periodic fallback HTTP polling (every 10s) to guarantee resilience if WS drops
+    if (!pollingIntervalTimer) {
+      pollingIntervalTimer = setInterval(async () => {
+        if (isDisposed) return;
+        if (!telemetryWs || telemetryWs.readyState !== WebSocket.OPEN) {
+          const updated = await pollActiveDriversFallback(currentBranchId);
+          if (updated) {
+            set({ isSupabaseLive: true, isTelemetryLive: true });
             syncState();
           }
-        )
-        .subscribe((status) => {
-          set({ isSupabaseLive: status === 'SUBSCRIBED' });
-        });
+        }
+      }, 10000);
+      if (typeof (pollingIntervalTimer as any)?.unref === 'function') {
+        (pollingIntervalTimer as any).unref();
+      }
     }
 
-    // 3. Listen to Firestore delivery_partners collection for identity/roster
+    // 4. Listen to Firestore delivery_partners collection for identity/roster
     firestoreUnsubDP = onSnapshot(
       collection(db, 'delivery_partners'),
       (snapshot) => {
@@ -217,7 +338,7 @@ export const useLiveRiderStore = create<LiveRiderFleetState>((set, get) => ({
       (err) => console.warn('[LiveRiderStore] delivery_partners listener note:', err?.message)
     );
 
-    // 4. Listen to Firestore users collection (role in ['delivery', 'delivery_partner'])
+    // 5. Listen to Firestore users collection (role in ['delivery', 'delivery_partner'])
     const usersQ = query(collection(db, 'users'), where('role', 'in', ['delivery', 'delivery_partner']));
     firestoreUnsubUsers = onSnapshot(
       usersQ,
@@ -256,16 +377,28 @@ export const useLiveRiderStore = create<LiveRiderFleetState>((set, get) => ({
     return () => {
       refCount = Math.max(0, refCount - 1);
       if (refCount === 0) {
-        cleanupSubscriptions();
+        cleanupSubscriptions(set);
       }
     };
   }
 }));
 
-function cleanupSubscriptions() {
-  if (supabase && supabaseChannel) {
-    supabase.removeChannel(supabaseChannel);
-    supabaseChannel = null;
+function cleanupSubscriptions(set?: any) {
+  isDisposed = true;
+  if (wsReconnectTimeout) {
+    clearTimeout(wsReconnectTimeout);
+    wsReconnectTimeout = null;
+  }
+  if (pollingIntervalTimer) {
+    clearInterval(pollingIntervalTimer);
+    pollingIntervalTimer = null;
+  }
+  if (telemetryWs) {
+    telemetryWs.close();
+    telemetryWs = null;
+  }
+  if (set) {
+    set({ isSupabaseLive: false, isTelemetryLive: false });
   }
   if (firestoreUnsubDP) {
     firestoreUnsubDP();
