@@ -12,7 +12,8 @@
     "electron:build": "npm run build && electron-builder --config electron-builder.json",
     "build:win": "npm run build && electron-builder --win --x64 --config electron-builder.json",
     "build:mac": "npm run build && electron-builder --mac --config electron-builder.json",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "node --import tsx --test src/tests/*.test.ts"
   },
   "engines": {
     "node": ">=24 <25"
@@ -48,6 +49,7 @@
     "lamejs": "^1.2.1",
     "playwright": "^1.65.1",
     "tailwindcss": "^4.0.6",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.3",
     "vite": "^6.1.0"
   }
